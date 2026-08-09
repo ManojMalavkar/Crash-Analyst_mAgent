@@ -1,0 +1,42 @@
+# ==============================================================================
+# SafetyAgent - Global Requirements
+# ==============================================================================
+
+# --- LLM & AI ---
+openai>=1.12.0                  # OpenAI-compatible client (works with AI Gateway)
+tiktoken>=0.5.0                 # Token counting
+
+# --- Vector Database ---
+chromadb>=0.4.22                # Persistent vector storage
+
+# --- Embeddings ---
+sentence-transformers>=2.2.0    # BAAI/bge-small-en-v1.5 embedding model
+
+# --- Knowledge Graph ---
+networkx>=3.1                   # API relationship graph
+
+# --- Web UI ---
+gradio>=4.19.0                  # Interactive web interfaces
+
+# --- Data Processing ---
+pandas>=2.0.0                   # Data manipulation
+numpy>=1.24.0                   # Numerical computing
+pyyaml>=6.0                     # YAML parsing (checklists, configs)
+jinja2>=3.1.0                   # Code template rendering
+
+# --- HTTP & Async ---
+httpx>=0.25.0                   # HTTP client (async support)
+aiofiles>=23.1.0                # Async file operations
+
+# --- Logging & Database ---
+# SQLite is built-in to Python stdlib
+
+# --- CAE Integration (optional) ---
+# ansys-dyna-core>=0.4.0        # PyDyna SDK (install separately)
+# Note: ANSA/META Python API requires ANSA/META installation
+
+# --- Development ---
+ruff>=0.3.0                     # Linting & formatting
+pytest>=7.4.0                   # Testing
+mypy>=1.8.0                     # Type checking
+python-dotenv>=1.0.0            # Environment variable management
