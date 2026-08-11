@@ -70,10 +70,10 @@ SafetyAgent/
 │   ├── bin/                    # Agent + keyword retriever
 │   ├── knowledge-base/         # PyDyna docs + keyword reference
 │   └── vector_db/              # ChromaDB collections
-├── 03_ModelCheck_Agent/        # Model quality validation
-│   ├── bin/                    # Checklist engine + checks
-│   ├── checklists/             # YAML-driven check definitions
-│   └── reports/                # Generated QA reports
+├── 03_ModelCheck_Agent/        # CAE model & include validation
+│   ├── bin/                    # Comparison engine + checkers
+│   ├── checklists/             # Reference include definitions (YAML)
+│   └── reports/                # Deviation reports (diff output)
 ├── 04_Toolbar_Plugin/          # ANSA/META integrated toolbar
 │   ├── ansa_plugin/            # ANSA GUI toolbar registration
 │   ├── meta_plugin/            # META GUI toolbar registration
@@ -121,11 +121,12 @@ SafetyAgent/
 - **Code templates**: Jinja2-based generation for common workflows
 - **Validation**: Keyword syntax and parameter checking
 
-### 03 — Model Check Agent
-- **YAML-driven checklists**: Euro NCAP 2024, company standards, custom
-- **Dual runners**: ANSA script-based + PyDyna direct-parse checks
-- **Auto-fix**: Automatic correction of common model issues
-- **Reports**: HTML/PDF with color-coded severity and screenshots
+### 03 — Model Check Agent (Include Validation)
+- **Reference comparison**: Compare model includes against reference include library
+- **Deviation detection**: Find missing, modified, or outdated include files
+- **Include hierarchy**: Validate include structure and dependencies
+- **YAML-driven checklists**: Euro NCAP 2024, company-standard reference templates
+- **Reports**: Deviation reports with diff highlights and severity levels
 
 ### 04 — Toolbar Plugin
 - **Native integration**: Registers directly in ANSA/META GUI
