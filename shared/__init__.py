@@ -20,6 +20,7 @@ __version__ = "0.1.0"
 
 from shared.config import settings, Settings
 from shared.llm_client import LLMClient, LLMResponse, LLMClientError, create_client
+from shared.logger import UsageLogger, create_logger, LoggerError
 
 __all__ = [
     # Configuration
@@ -30,4 +31,8 @@ __all__ = [
     "LLMResponse",
     "LLMClientError",
     "create_client",
+    # Logging
+    "UsageLogger",
+    "create_logger",
+    "LoggerError",
 ]
