@@ -584,19 +584,61 @@ class IngestionPipeline:
 
 if __name__ == "__main__":
     import sys
+    import argparse
     
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
     
-    source_dir = sys.argv[1] if len(sys.argv) > 1 else "knowledge-base/raw"
+    parser = argparse.ArgumentParser(
+        description="Ingest ANSA/META documentation into structured Document objects",
+        epilog="""
+Examples:
+  # Point to your ANSA python docs
+  python ingest.py "C:\\BETA_CAE_Systems\\ANSA_v2025.2.2\\python"
+  
+  # Linux
+  python ingest.py /opt/BETA_CAE_Systems/ansa_v2025.2.2/python
+  
+  # Custom directory
+  python ingest.py /path/to/my/docs --software meta
+
+Note: This only PARSES files. To build the searchable vector database,
+      use build_vector_db.py instead (it calls ingest internally).
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "source_dir",
+        help="Directory containing ANSA/META documentation (.py, .html, .json, .jsonl, .md)"
+    )
+    parser.add_argument(
+        "--software", default="ansa", choices=["ansa", "meta"],
+        help="Target software (default: ansa)"
+    )
+    args = parser.parse_args()
     
-    pipeline = IngestionPipeline(source_dir=source_dir, software="ansa")
+    pipeline = IngestionPipeline(source_dir=args.source_dir, software=args.software)
     documents = pipeline.run()
     
+    if not documents:
+        print("\n  ERROR: No documents found!")
+        print(f"  Directory: {args.source_dir}")
+        print("  Check that the path contains .py, .html, .json, .jsonl, or .md files.")
+        sys.exit(1)
+    
     stats = pipeline.get_stats(documents)
-    print(f"\n{'='*50}")
-    print(f"  Ingestion Summary")
-    print(f"{'='*50}")
+    print(f"\n{'='*60}")
+    print(f"  Ingestion Complete")
+    print(f"{'='*60}")
+    print(f"  Source          : {args.source_dir}")
+    print(f"  Software        : {args.software}")
     print(f"  Total documents : {stats['total_documents']}")
     print(f"  Avg content len : {stats['avg_content_length']:.0f} chars")
     print(f"  By type         : {stats['by_type']}")
     print(f"  By module       : {dict(list(stats['by_module'].items())[:10])}")
+    print(f"{'='*60}")
+    print(f"\n  Next step: Build the vector database with:")
+    print(f"    python bin/build_vector_db.py --source \"{args.source_dir}\"")
+    print()

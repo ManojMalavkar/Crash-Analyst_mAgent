@@ -1,6 +1,6 @@
 # SafetyAgent — AI-Powered CAE Safety Engineering Platform
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
@@ -145,31 +145,30 @@ SafetyAgent/
 
 ### Prerequisites
 
-- Python 3.9 or higher
-- Access to an LLM endpoint (Databricks AI Gateway recommended)
-- ChromaDB for vector storage
-- ANSA/META installation (for plugin features)
-- HPC cluster access (for orchestrator features)
+- Python 3.10+
+- ANSA/META installation (for API documentation)
+- Access to an LLM endpoint (Databricks AI Gateway or OpenAI-compatible)
 
-### Installation
+### Setup (3 commands)
 
 ```bash
-# Clone the repository
 git clone https://github.com/yourusername/SafetyAgent.git
 cd SafetyAgent
 
-# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# .venv\Scripts\activate  # Windows
+.venv\Scripts\activate          # Windows
+source .venv/bin/activate        # Linux/Mac
 
-# Install dependencies
 pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your API keys and paths
+python setup.py
 ```
+
+The setup wizard will:
+1. Install all dependencies
+2. Create `.env` from `.env.example`
+3. Ask for your ANSA documentation path (e.g. `C:\BETA_CAE_Systems\ANSA_v2025.2.2\python\doc`)
+4. Build the knowledge base (ingest docs + embed into ChromaDB)
+5. Verify the installation
 
 ### Running an Agent
 
@@ -187,12 +186,18 @@ python 03_ModelCheck_Agent/app_gradio.py
 python 05_HPC_Orchestrator/app_gradio.py
 ```
 
+### Rebuild Knowledge Base
+
+If you upgrade ANSA or add new documentation:
+
+```bash
+python 01_ANSA_ApiAgent/bin/build_vector_db.py --source "<new_docs_path>" --rebuild
+```
+
 ### Docker Deployment
 
 ```bash
-# Build and start all services
 docker-compose up -d
-
 # Access unified dashboard at http://localhost:7860
 ```
 

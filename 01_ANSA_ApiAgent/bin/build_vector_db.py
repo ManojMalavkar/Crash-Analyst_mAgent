@@ -11,11 +11,11 @@ Features:
 - Collection management (create, rebuild, stats)
 
 Usage:
-    # Build from scratch
-    python build_vector_db.py --source knowledge-base/raw --rebuild
+    # Build from source docs directory
+    python build_vector_db.py --source /path/to/docs --rebuild
     
     # Incremental update
-    python build_vector_db.py --source knowledge-base/raw
+    python build_vector_db.py --source /path/to/docs
     
     # Programmatic
     from bin.build_vector_db import VectorStoreBuilder
