@@ -40,7 +40,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from shared.config import settings
-from bin.ingest import Document, IngestionPipeline
+from ingest import Document, IngestionPipeline
 
 
 logger = logging.getLogger(__name__)
