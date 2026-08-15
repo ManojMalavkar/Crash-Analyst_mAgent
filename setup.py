@@ -167,10 +167,22 @@ def get_docs_path():
 
 
 def check_vector_db_exists(collection_name: str) -> bool:
-    """Check if a ChromaDB collection already exists."""
+    """Check if a ChromaDB collection already exists.
+    
+    Uses file-based detection first (fast, no imports needed),
+    then verifies with chromadb if available.
+    """
     db_path = Path("vector_db")
     if not db_path.exists():
         return False
+
+    # Fast check: ChromaDB stores collections as subdirectories
+    # Look for the chroma.sqlite3 file which indicates an initialized DB
+    chroma_db_file = db_path / "chroma.sqlite3"
+    if not chroma_db_file.exists():
+        return False
+
+    # Verify collection exists using chromadb
     try:
         import chromadb
         from chromadb.config import Settings as ChromaSettings
@@ -179,7 +191,11 @@ def check_vector_db_exists(collection_name: str) -> bool:
             settings=ChromaSettings(anonymized_telemetry=False),
         )
         collection = client.get_collection(collection_name)
-        return collection.count() > 0
+        count = collection.count()
+        if count > 0:
+            success(f"  Found collection '{collection_name}' with {count:,} documents")
+            return True
+        return False
     except Exception:
         return False
 
