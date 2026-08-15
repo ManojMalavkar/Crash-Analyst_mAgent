@@ -166,9 +166,27 @@ def get_docs_path():
             return str(docs_dir)
 
 
+def check_vector_db_exists(collection_name: str) -> bool:
+    """Check if a ChromaDB collection already exists."""
+    db_path = Path("vector_db")
+    if not db_path.exists():
+        return False
+    try:
+        import chromadb
+        from chromadb.config import Settings as ChromaSettings
+        client = chromadb.PersistentClient(
+            path=str(db_path),
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
+        collection = client.get_collection(collection_name)
+        return collection.count() > 0
+    except Exception:
+        return False
+
+
 def build_knowledge_base(source_dir):
     """Run build_vector_db.py to ingest and embed documents."""
-    print("  Building vector database (this takes 2-5 minutes)...")
+    print("  Building ANSA/META API vector database (this takes 2-5 minutes)...")
     print()
 
     result = subprocess.run(
@@ -186,7 +204,34 @@ def build_knowledge_base(source_dir):
         print("  Check the error above and try again.")
         return False
 
-    success("Knowledge base built successfully")
+    success("ANSA/META API knowledge base built successfully")
+    return True
+
+
+def build_session_vector_db():
+    """Build the META session commands vector database."""
+    source_file = Path("01_ANSA_ApiAgent/knowledge-base/session_commands.json")
+
+    if not source_file.exists():
+        warn(f"Session commands file not found: {source_file}")
+        return False
+
+    print("  Building session commands vector database...")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "01_ANSA_ApiAgent/bin/build_session_vector_db.py",
+            "--source", str(source_file),
+        ],
+        capture_output=False,
+    )
+
+    if result.returncode != 0:
+        error("Session vector DB build failed.")
+        return False
+
+    success("Session commands vector database built successfully")
     return True
 
 
@@ -233,16 +278,32 @@ def main():
     step(3, total_steps, "Setting up configuration")
     setup_env_file()
 
-    # Step 4: Build knowledge base
-    step(4, total_steps, "Building knowledge base")
-    docs_path = get_docs_path()
+    # Step 4: Build knowledge bases (smart — skip if already present)
+    step(4, total_steps, "Building knowledge bases")
 
-    if docs_path:
-        kb_ok = build_knowledge_base(docs_path)
+    # 4a: ANSA/META API vector DB
+    api_db_exists = check_vector_db_exists("ansa_meta_api")
+    if api_db_exists:
+        success("ANSA/META API vector database already exists — skipping")
+        kb_ok = True
     else:
-        warn("Skipped knowledge base build.")
-        warn("Run later: python 01_ANSA_ApiAgent/bin/build_vector_db.py --source <path>")
-        kb_ok = False
+        print("  ANSA/META API vector database not found.")
+        docs_path = get_docs_path()
+        if docs_path:
+            kb_ok = build_knowledge_base(docs_path)
+        else:
+            warn("Skipped ANSA/META API knowledge base build.")
+            warn("Run later: python 01_ANSA_ApiAgent/bin/build_vector_db.py --source <path>")
+            kb_ok = False
+
+    # 4b: Session commands vector DB
+    print()
+    session_db_exists = check_vector_db_exists("meta_session_commands")
+    if session_db_exists:
+        success("Session commands vector database already exists — skipping")
+        session_ok = True
+    else:
+        session_ok = build_session_vector_db()
 
     # Step 5: Verify
     step(5, total_steps, "Verifying installation")
@@ -251,21 +312,33 @@ def main():
     # Summary
     print()
     print("=" * 60)
-    if kb_ok and verify_ok:
+    all_ok = kb_ok and session_ok and verify_ok
+    if all_ok:
         print("  SETUP COMPLETE!")
     else:
         print("  SETUP PARTIALLY COMPLETE")
     print("=" * 60)
     print()
+
+    # Status report
+    print("  Database Status:")
+    print(f"    ANSA/META API : {'READY' if kb_ok else 'NOT BUILT'}")
+    print(f"    Session Cmds  : {'READY' if session_ok else 'NOT BUILT'}")
+    print()
+
     print("  Next steps:")
     print("    1. Add your LLM API key to .env")
-    if kb_ok:
+    if all_ok:
         print("    2. Start the agent:")
         print("       python 01_ANSA_ApiAgent/app_gradio.py")
     else:
-        print("    2. Build knowledge base:")
-        print("       python 01_ANSA_ApiAgent/bin/build_vector_db.py --source <docs_path>")
-        print("    3. Start the agent:")
+        if not kb_ok:
+            print("    2. Build ANSA/META knowledge base:")
+            print("       python 01_ANSA_ApiAgent/bin/build_vector_db.py --source <docs_path>")
+        if not session_ok:
+            print("    3. Build session commands DB:")
+            print("       python 01_ANSA_ApiAgent/bin/build_session_vector_db.py --source 01_ANSA_ApiAgent/knowledge-base/session_commands.json")
+        print("    4. Start the agent:")
         print("       python 01_ANSA_ApiAgent/app_gradio.py")
     print()
 
