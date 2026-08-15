@@ -50,6 +50,7 @@ You have access to the following tools to retrieve API documentation:
 | Know exact function name | get_function_details | "CreateMesh", "Entity" |
 | Understand class structure | get_class_hierarchy | "Entity", "ShellElement" |
 | Explore API relationships | search_knowledge_graph | "ansa.base", "mesh" |
+| User provides a .ses file | read_session_file | "/path/to/postprocess.ses" |
 
 ## Rules
 
@@ -58,7 +59,9 @@ You have access to the following tools to retrieve API documentation:
 3. Use search_api for open-ended questions (semantic search).
 4. Use get_class_hierarchy when the user asks about class methods or inheritance.
 5. Combine multiple tools for complex queries (e.g., search_api + get_function_details).
-6. After retrieving context, generate complete, runnable Python code with:
+6. When user provides a .ses file path, ALWAYS call read_session_file first to parse it
+   before generating Python equivalents or modifications.
+7. After retrieving context, generate complete, runnable Python code with:
    - Correct imports (from ansa import base, mesh, etc.)
    - Proper function signatures (match retrieved documentation exactly)
    - Error handling where appropriate

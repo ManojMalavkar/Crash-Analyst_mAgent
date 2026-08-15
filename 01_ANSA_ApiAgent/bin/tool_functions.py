@@ -302,6 +302,124 @@ def search_knowledge_graph(query: str, max_results: int = 10) -> str:
 
 
 # =============================================================================
+# Tool 6: read_session_file
+# =============================================================================
+
+def read_session_file(file_path: str) -> str:
+    """Read and parse a META session file (.ses) from the given path.
+    
+    Use this when the user provides a session file path and wants to:
+    - Understand what a session file does
+    - Convert session commands to Python
+    - Modify or extend an existing session workflow
+    - Debug a failing session script
+    
+    Args:
+        file_path: Absolute or relative path to the .ses session file
+    
+    Returns:
+        JSON string with file content, parsed commands, and metadata
+    """
+    from pathlib import Path
+    
+    filepath = Path(file_path).expanduser().resolve()
+    
+    # Validate file exists
+    if not filepath.exists():
+        return json.dumps({
+            "error": f"File not found: {filepath}",
+            "suggestion": "Check the path and try again. Use absolute path if relative fails.",
+        })
+    
+    if not filepath.is_file():
+        return json.dumps({"error": f"Path is not a file: {filepath}"})
+    
+    # Read file content
+    try:
+        content = filepath.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:
+        return json.dumps({"error": f"Cannot read file: {e}"})
+    
+    # Parse session commands
+    lines = content.splitlines()
+    commands = []
+    current_command = None
+    
+    for line_num, line in enumerate(lines, 1):
+        stripped = line.strip()
+        
+        # Skip empty lines and comments
+        if not stripped or stripped.startswith("#") or stripped.startswith("//"):
+            continue
+        
+        commands.append({
+            "line": line_num,
+            "content": stripped,
+        })
+    
+    # Identify command categories
+    categories = _categorize_session_commands(commands)
+    
+    # Build summary
+    result = {
+        "file_path": str(filepath),
+        "file_name": filepath.name,
+        "file_size_bytes": filepath.stat().st_size,
+        "total_lines": len(lines),
+        "total_commands": len(commands),
+        "categories": categories,
+        "content": content if len(content) <= 5000 else content[:5000] + f"\n\n... [truncated, {len(content)} total chars]",
+        "commands_preview": commands[:50],
+    }
+    
+    return json.dumps(result, indent=2)
+
+
+def _categorize_session_commands(commands: list[dict]) -> dict:
+    """Categorize session commands by type."""
+    categories = {
+        "file_io": [],       # open, save, export
+        "display": [],       # view, plot, animate, contour
+        "data": [],          # extract, filter, math
+        "annotation": [],    # text, arrow, legend
+        "window": [],        # window, layout, page
+        "other": [],
+    }
+    
+    keywords = {
+        "file_io": ["open", "save", "export", "import", "read", "write", "load", "close"],
+        "display": ["plot", "contour", "animate", "view", "iso", "section", "fringe", "deform", "display"],
+        "data": ["extract", "filter", "math", "curve", "result", "value", "measure", "cross"],
+        "annotation": ["text", "arrow", "legend", "title", "label", "note", "annotation"],
+        "window": ["window", "layout", "page", "resize", "position", "toolbox"],
+    }
+    
+    for cmd in commands:
+        content_lower = cmd["content"].lower()
+        categorized = False
+        
+        for category, kw_list in keywords.items():
+            if any(kw in content_lower for kw in kw_list):
+                categories[category].append(cmd["line"])
+                categorized = True
+                break
+        
+        if not categorized:
+            categories["other"].append(cmd["line"])
+    
+    # Return counts + sample lines
+    summary = {}
+    for cat, line_nums in categories.items():
+        if line_nums:
+            summary[cat] = {
+                "count": len(line_nums),
+                "lines": line_nums[:10],  # First 10 line numbers
+            }
+    
+    return summary
+
+
+# =============================================================================
 # Tool Registry
 # =============================================================================
 
@@ -312,4 +430,5 @@ ALL_TOOLS = [
     get_function_details,
     get_class_hierarchy,
     search_knowledge_graph,
+    read_session_file,
 ]
