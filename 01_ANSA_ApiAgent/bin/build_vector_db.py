@@ -1,9 +1,14 @@
 """ChromaDB Vector Store Builder for ANSA/META API Knowledge Base.
 
-Embeds ingested documents using sentence-transformers (BGE model) and stores
-them in a persistent ChromaDB collection with metadata for filtered retrieval.
+Reads pre-extracted documents from coderag_documents.jsonl (produced by ingest.py)
+and embeds them into a persistent ChromaDB collection.
+
+Pipeline:
+  Step 1: python bin/ingest.py <docs_path>           -> coderag_documents.jsonl
+  Step 2: python bin/build_vector_db.py --source knowledge-base/coderag_documents.jsonl
 
 Features:
+- Reads from JSONL (no re-parsing of source files needed)
 - Persistent ChromaDB storage (survives restarts)
 - Batch embedding for efficiency
 - Metadata-based filtering (module, type, software)
@@ -11,18 +16,20 @@ Features:
 - Collection management (create, rebuild, stats)
 
 Usage:
-    # Build from source docs directory
-    python build_vector_db.py --source /path/to/docs --rebuild
+    # Build from JSONL
+    python build_vector_db.py --source knowledge-base/coderag_documents.jsonl --rebuild
     
     # Incremental update
-    python build_vector_db.py --source /path/to/docs
+    python build_vector_db.py --source knowledge-base/coderag_documents.jsonl
     
     # Programmatic
     from bin.build_vector_db import VectorStoreBuilder
     builder = VectorStoreBuilder(persist_dir="vector_db")
-    builder.build(documents)
+    builder.build_from_jsonl("knowledge-base/coderag_documents.jsonl")
 """
 
+import json
+import hashlib
 import logging
 import time
 from pathlib import Path
@@ -40,7 +47,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from shared.config import settings
-from ingest import Document, IngestionPipeline
 
 
 logger = logging.getLogger(__name__)
@@ -146,15 +152,59 @@ class VectorStoreBuilder:
         
         logger.info(f"ChromaDB initialized at: {self.persist_dir}")
     
-    def build(
+    def build_from_jsonl(
         self,
-        documents: list[Document],
+        jsonl_path: str | Path,
         rebuild: bool = False,
     ) -> dict:
-        """Build or update the vector collection from documents.
+        """Build vector collection from a JSONL file (coderag_documents.jsonl).
         
         Args:
-            documents: List of Document objects to index
+            jsonl_path: Path to the JSONL file with extracted records
+            rebuild: If True, delete and recreate the collection
+            
+        Returns:
+            Build statistics dict
+        """
+        jsonl_path = Path(jsonl_path)
+        if not jsonl_path.exists():
+            raise FileNotFoundError(f"JSONL file not found: {jsonl_path}")
+
+        records = []
+        with open(jsonl_path, "r", encoding="utf-8") as fp:
+            for line in fp:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+
+        logger.info(f"Loaded {len(records)} records from {jsonl_path}")
+        return self.build(records, rebuild=rebuild)
+
+    @staticmethod
+    def _build_embed_text(rec: dict) -> str:
+        """Build the text to embed from a record dict."""
+        parts = []
+        if rec.get("symbol"):
+            parts.append(rec["symbol"])
+        if rec.get("signature"):
+            parts.append(rec["signature"])
+        if rec.get("description"):
+            parts.append(rec["description"])
+        if rec.get("docstring"):
+            parts.append(rec["docstring"][:500])
+        if rec.get("notes"):
+            parts.append(" ".join(rec["notes"][:3]))
+        return "\n".join(parts) if parts else rec.get("symbol", "")
+
+    def build(
+        self,
+        records: list[dict],
+        rebuild: bool = False,
+    ) -> dict:
+        """Build or update the vector collection from record dicts.
+        
+        Args:
+            records: List of record dicts (from JSONL or KnowledgeExtractor)
             rebuild: If True, delete and recreate the collection
             
         Returns:
@@ -175,35 +225,48 @@ class VectorStoreBuilder:
             metadata={"hnsw:space": "cosine"},  # Cosine similarity
         )
         
+        # Build embed texts and metadata from record dicts
+        prepared = []
+        for rec in records:
+            text = self._build_embed_text(rec)
+            doc_id = hashlib.md5(text.encode()).hexdigest()[:12]
+            metadata = {
+                k: v for k, v in {
+                    "symbol": rec.get("symbol", ""),
+                    "module": rec.get("module", ""),
+                    "type": rec.get("type", ""),
+                    "software": rec.get("software", ""),
+                    "deprecated": str(rec.get("deprecated", False)),
+                    "signature": rec.get("signature", ""),
+                }.items() if v
+            }
+            prepared.append((doc_id, text, metadata))
+
         # Filter out already-indexed documents (incremental update)
         existing_ids = set()
         if not rebuild and collection.count() > 0:
             existing = collection.get()
             existing_ids = set(existing["ids"])
         
-        new_documents = [
-            doc for doc in documents
-            if doc.doc_id not in existing_ids
-        ]
+        new_docs = [(did, text, meta) for did, text, meta in prepared if did not in existing_ids]
         
-        if not new_documents:
+        if not new_docs:
             logger.info("No new documents to index.")
             return {
                 "total_in_collection": collection.count(),
                 "new_documents": 0,
-                "skipped": len(documents),
+                "skipped": len(records),
                 "duration_seconds": 0,
             }
         
         logger.info(
-            f"Indexing {len(new_documents)} new documents "
-            f"(skipping {len(documents) - len(new_documents)} existing)"
+            f"Indexing {len(new_docs)} new documents "
+            f"(skipping {len(records) - len(new_docs)} existing)"
         )
         
-        # Prepare data for ChromaDB
-        ids = [doc.doc_id for doc in new_documents]
-        texts = [doc.content for doc in new_documents]
-        metadatas = [doc.to_metadata() for doc in new_documents]
+        ids = [d[0] for d in new_docs]
+        texts = [d[1] for d in new_docs]
+        metadatas = [d[2] for d in new_docs]
         
         # Embed documents
         logger.info("Generating embeddings...")
@@ -225,8 +288,8 @@ class VectorStoreBuilder:
         
         stats = {
             "total_in_collection": collection.count(),
-            "new_documents": len(new_documents),
-            "skipped": len(documents) - len(new_documents),
+            "new_documents": len(new_docs),
+            "skipped": len(records) - len(new_docs),
             "duration_seconds": round(duration, 1),
         }
         
@@ -324,58 +387,61 @@ if __name__ == "__main__":
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
     
-    parser = argparse.ArgumentParser(description="Build ANSA/META vector database")
-    parser.add_argument("--source", default="knowledge-base/raw", help="Source docs directory")
+    parser = argparse.ArgumentParser(
+        description="Build ANSA/META vector database from extracted JSONL",
+        epilog="""
+Examples:
+  # After running ingest.py first:
+  python bin/build_vector_db.py --source knowledge-base/coderag_documents.jsonl --rebuild
+  
+  # Incremental (only add new records):
+  python bin/build_vector_db.py --source knowledge-base/coderag_documents.jsonl
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--source", required=True, help="Path to coderag_documents.jsonl")
     parser.add_argument("--persist-dir", default=None, help="ChromaDB persist directory")
     parser.add_argument("--collection", default="ansa_meta_api", help="Collection name")
-    parser.add_argument("--software", default="ansa", choices=["ansa", "meta"], help="Target software")
     parser.add_argument("--rebuild", action="store_true", help="Rebuild collection from scratch")
     args = parser.parse_args()
     
-    # Step 1: Ingest documents
-    print(f"\n{'='*50}")
-    print(f"  Step 1: Ingesting from {args.source}")
-    print(f"{'='*50}")
-    
-    pipeline = IngestionPipeline(source_dir=args.source, software=args.software)
-    documents = pipeline.run()
-    
-    if not documents:
-        print("No documents found. Check your source directory.")
+    source_path = Path(args.source)
+    if not source_path.exists():
+        print(f"\n  ERROR: Source file not found: {source_path}")
+        print(f"  Run ingest.py first to generate the JSONL file.")
+        print(f"  Example: python bin/ingest.py /path/to/docs --output knowledge-base/")
         sys.exit(1)
     
-    stats = pipeline.get_stats(documents)
-    print(f"  Documents: {stats['total_documents']}")
-    print(f"  By type: {stats['by_type']}")
-    
-    # Step 2: Build vector store
+    # Build vector store from JSONL
     print(f"\n{'='*50}")
-    print(f"  Step 2: Building vector database")
+    print(f"  Building vector database")
+    print(f"  Source: {source_path}")
     print(f"{'='*50}")
     
     builder = VectorStoreBuilder(
         persist_dir=args.persist_dir,
         collection_name=args.collection,
     )
-    build_stats = builder.build(documents, rebuild=args.rebuild)
+    build_stats = builder.build_from_jsonl(source_path, rebuild=args.rebuild)
     
     print(f"\n  Results:")
     for k, v in build_stats.items():
         print(f"    {k}: {v}")
     
-    # Step 3: Quick test search
-    print(f"\n{'='*50}")
-    print(f"  Step 3: Test search")
-    print(f"{'='*50}")
-    
-    test_queries = ["mesh generation", "create material", "export model"]
-    for query in test_queries:
-        results = builder.search(query, top_k=2)
-        print(f"\n  Query: '{query}'")
-        for r in results:
-            name = r['metadata'].get('function_name', 'unknown')
-            score = r['score']
-            print(f"    [{score:.3f}] {name} ({r['metadata'].get('doc_type', '?')})")
+    # Quick test search
+    if build_stats["total_in_collection"] > 0:
+        print(f"\n{'='*50}")
+        print(f"  Test search")
+        print(f"{'='*50}")
+        
+        test_queries = ["mesh generation", "create material", "export model"]
+        for query in test_queries:
+            results = builder.search(query, top_k=2)
+            print(f"\n  Query: '{query}'")
+            for r in results:
+                symbol = r['metadata'].get('symbol', 'unknown')
+                score = r['score']
+                print(f"    [{score:.3f}] {symbol} ({r['metadata'].get('type', '?')})")
     
     print(f"\n{'='*50}")
     print(f"  Build complete! Collection at: {builder.persist_dir}")
