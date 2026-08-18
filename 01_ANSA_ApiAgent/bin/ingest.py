@@ -1,644 +1,696 @@
 """Knowledge Base Ingestion Pipeline for ANSA/META API Documentation.
 
-Parses ANSA and META API documentation from multiple source formats
-(HTML, JSON, Python source files) into structured chunks suitable
-for embedding and vector storage.
+Extracts structured API documentation from multiple source formats
+and writes intermediate JSONL files for vector DB and KG building.
+
+Pipeline (3 separate steps):
+  Step 1: python bin/ingest.py <docs_path>           -> coderag_documents.jsonl + coderag_examples.jsonl
+  Step 2: python bin/build_vector_db.py              -> ChromaDB (reads JSONL)
+  Step 3: python bin/kg_retriever.py --from-jsonl    -> knowledge_graph.pkl (reads kg_nodes/edges.jsonl)
 
 Supported source formats:
-- HTML: Parsed API reference pages (class/function docs)
-- JSON/JSONL: Pre-structured API documentation exports
-- Python (.py): Source code with docstrings
-- Markdown (.md): Tutorial and guide documents
+  - HTML: Sphinx API reference pages (dt[id] + dd structure)
+  - JSON/JSONL: Pre-structured API documentation exports
+  - Python (.py): Source code stubs with docstrings
+  - Markdown (.md): Tutorial and guide documents
+  - Archives: .tar.gz and .zip (auto-extracted before parsing)
 
-Output: List of Document objects with content, metadata, and relationships.
+Output files (written to knowledge-base/):
+  - coderag_documents.jsonl   -> One record per API symbol (for vector DB)
+  - coderag_examples.jsonl    -> Code example scripts (for RAG)
+  - kg_nodes.jsonl            -> Knowledge graph nodes
+  - kg_edges.jsonl            -> Knowledge graph edges
+  - knowledge_manifest.json   -> Build stats and metadata
+  - full_inventory.csv        -> File inventory of source directory
 
 Usage:
-    from bin.ingest import IngestionPipeline
-    
-    pipeline = IngestionPipeline(source_dir="knowledge-base/raw")
-    documents = pipeline.run()
-    print(f"Ingested {len(documents)} documents")
+    python bin/ingest.py /path/to/api_ref_ansa --software ansa
+    python bin/ingest.py /path/to/api_ref_meta --software meta
+    python bin/ingest.py /path/to/docs --software ansa --output knowledge-base/
 """
 
 import re
 import ast
 import json
-import hashlib
+import csv
+import tarfile
+import zipfile
 import logging
 from pathlib import Path
-from dataclasses import dataclass, field
 from typing import Optional
-from html.parser import HTMLParser
+
+try:
+    from bs4 import BeautifulSoup, Tag
+except ImportError:
+    BeautifulSoup = None
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(iterable, **kwargs):
+        return iterable
 
 
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Data Models
+# Constants
 # =============================================================================
 
-@dataclass
-class Document:
-    """A single document chunk ready for embedding."""
-    
-    content: str                    # Text content to embed
-    doc_id: str = ""               # Unique ID (generated from content hash)
-    
-    # Metadata for filtering and display
-    source_file: str = ""          # Original file path
-    doc_type: str = ""             # "class", "function", "method", "module", "guide"
-    module_name: str = ""          # e.g., "ansa.base", "meta.post"
-    class_name: str = ""           # Parent class (if method)
-    function_name: str = ""        # Function/method name
-    signature: str = ""            # Full function signature
-    return_type: str = ""          # Return type annotation
-    
-    # Relationships (for knowledge graph)
-    parent_class: str = ""         # Inheritance parent
-    imports: list = field(default_factory=list)  # Required imports
-    related_functions: list = field(default_factory=list)  # Cross-references
-    
-    # Classification
-    api_category: str = ""         # "mesh", "geometry", "material", "contact", etc.
-    software: str = ""             # "ansa" or "meta"
-    
-    def __post_init__(self):
-        if not self.doc_id:
-            self.doc_id = hashlib.md5(self.content.encode()).hexdigest()[:12]
-    
-    def to_metadata(self) -> dict:
-        """Convert to flat metadata dict for ChromaDB storage."""
-        return {
-            k: v for k, v in {
-                "source_file": self.source_file,
-                "doc_type": self.doc_type,
-                "module_name": self.module_name,
-                "class_name": self.class_name,
-                "function_name": self.function_name,
-                "signature": self.signature,
-                "return_type": self.return_type,
-                "parent_class": self.parent_class,
-                "api_category": self.api_category,
-                "software": self.software,
-            }.items() if v  # Only include non-empty fields
-        }
+_HTML_NOISE_DIRS = {
+    "_static", "_images", "_downloads",
+    "_sphinx_design_static", "_sources"
+}
+_HTML_NOISE_FILES = {
+    "genindex.html", "search.html",
+    "py-modindex.html", "searchindex.js"
+}
 
 
 # =============================================================================
-# Source Parsers
+# Signature Cleanup
 # =============================================================================
 
-class PythonSourceParser:
-    """Parse Python source files to extract classes, functions, and docstrings."""
-    
-    def __init__(self, software: str = "ansa"):
-        self.software = software
-    
-    def parse_file(self, filepath: Path) -> list[Document]:
-        """Parse a Python file and extract documented symbols."""
-        documents = []
-        source = filepath.read_text(encoding="utf-8", errors="ignore")
-        
-        try:
-            tree = ast.parse(source)
-        except SyntaxError as e:
-            logger.warning(f"Syntax error in {filepath}: {e}")
-            return documents
-        
-        module_name = self._infer_module_name(filepath)
-        
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                doc = self._extract_class(node, module_name, filepath)
-                if doc:
-                    documents.append(doc)
-                
-                # Extract methods
-                for item in node.body:
-                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        doc = self._extract_function(
-                            item, module_name, filepath,
-                            class_name=node.name
-                        )
-                        if doc:
-                            documents.append(doc)
-            
-            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if not self._is_nested(node, tree):
-                    doc = self._extract_function(node, module_name, filepath)
-                    if doc:
-                        documents.append(doc)
-        
-        return documents
-    
-    def _extract_class(self, node: ast.ClassDef, module: str, filepath: Path) -> Optional[Document]:
-        """Extract class documentation."""
-        docstring = ast.get_docstring(node) or ""
-        bases = [self._get_name(b) for b in node.bases]
-        
-        methods = [
-            item.name for item in node.body
-            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and not item.name.startswith("_")
-        ]
-        
-        content = f"""Class: {module}.{node.name}
-Inherits from: {', '.join(bases) if bases else 'object'}
-
-{docstring}
-
-Public methods: {', '.join(methods[:20])}"""
-        
-        return Document(
-            content=content.strip(),
-            source_file=str(filepath),
-            doc_type="class",
-            module_name=module,
-            class_name=node.name,
-            parent_class=bases[0] if bases else "",
-            software=self.software,
-            related_functions=methods[:20],
-        )
-    
-    def _extract_function(
-        self, node, module: str, filepath: Path, class_name: str = ""
-    ) -> Optional[Document]:
-        """Extract function/method documentation."""
-        docstring = ast.get_docstring(node) or ""
-        if not docstring and node.name.startswith("_"):
-            return None  # Skip undocumented private methods
-        
-        signature = self._get_signature(node)
-        full_name = f"{module}.{class_name}.{node.name}" if class_name else f"{module}.{node.name}"
-        
-        content = f"""Function: {full_name}
-Signature: {signature}
-
-{docstring}"""
-        
-        return Document(
-            content=content.strip(),
-            source_file=str(filepath),
-            doc_type="method" if class_name else "function",
-            module_name=module,
-            class_name=class_name,
-            function_name=node.name,
-            signature=signature,
-            software=self.software,
-        )
-    
-    def _get_signature(self, node) -> str:
-        """Reconstruct function signature from AST."""
-        args = []
-        for arg in node.args.args:
-            name = arg.arg
-            if arg.annotation:
-                name += f": {ast.unparse(arg.annotation)}"
-            args.append(name)
-        
-        sig = f"{node.name}({', '.join(args)})"
-        if node.returns:
-            sig += f" -> {ast.unparse(node.returns)}"
+def clean_signature(sig: str) -> str:
+    """Remove Sphinx-HTML whitespace artefacts from a function signature."""
+    if not sig:
         return sig
-    
-    def _get_name(self, node) -> str:
-        """Get name from AST node."""
-        if isinstance(node, ast.Name):
-            return node.id
-        elif isinstance(node, ast.Attribute):
-            return f"{self._get_name(node.value)}.{node.attr}"
-        return "unknown"
-    
-    def _infer_module_name(self, filepath: Path) -> str:
-        """Infer module name from file path."""
-        parts = filepath.stem.split("_")
-        if self.software in str(filepath).lower():
-            return f"{self.software}.{filepath.stem}"
-        return filepath.stem
-    
-    def _is_nested(self, node, tree) -> bool:
-        """Check if function is nested inside a class."""
-        for parent in ast.walk(tree):
-            if isinstance(parent, ast.ClassDef):
-                if node in parent.body:
-                    return True
-        return False
-
-
-class JSONParser:
-    """Parse JSON/JSONL documentation files."""
-    
-    def __init__(self, software: str = "ansa"):
-        self.software = software
-    
-    def parse_file(self, filepath: Path) -> list[Document]:
-        """Parse a JSON or JSONL file."""
-        documents = []
-        
-        if filepath.suffix == ".jsonl":
-            documents = self._parse_jsonl(filepath)
-        else:
-            documents = self._parse_json(filepath)
-        
-        return documents
-    
-    def _parse_jsonl(self, filepath: Path) -> list[Document]:
-        """Parse JSONL (one JSON object per line)."""
-        documents = []
-        for line_num, line in enumerate(filepath.read_text(encoding="utf-8").splitlines(), 1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                data = json.loads(line)
-                doc = self._json_to_document(data, filepath)
-                if doc:
-                    documents.append(doc)
-            except json.JSONDecodeError as e:
-                logger.warning(f"JSON error in {filepath}:{line_num}: {e}")
-        return documents
-    
-    def _parse_json(self, filepath: Path) -> list[Document]:
-        """Parse a single JSON file (array or object)."""
-        data = json.loads(filepath.read_text(encoding="utf-8"))
-        
-        if isinstance(data, list):
-            return [
-                doc for item in data
-                if (doc := self._json_to_document(item, filepath))
-            ]
-        elif isinstance(data, dict):
-            doc = self._json_to_document(data, filepath)
-            return [doc] if doc else []
-        return []
-    
-    def _json_to_document(self, data: dict, filepath: Path) -> Optional[Document]:
-        """Convert a JSON object to a Document."""
-        # Support multiple JSON formats
-        content = data.get("content") or data.get("description") or data.get("docstring", "")
-        name = data.get("name") or data.get("function_name") or data.get("title", "")
-        
-        if not content and not name:
-            return None
-        
-        # Build rich content
-        parts = []
-        if name:
-            parts.append(f"Name: {name}")
-        if data.get("signature"):
-            parts.append(f"Signature: {data['signature']}")
-        if data.get("module"):
-            parts.append(f"Module: {data['module']}")
-        if content:
-            parts.append(f"\n{content}")
-        if data.get("example"):
-            parts.append(f"\nExample:\n{data['example']}")
-        if data.get("parameters"):
-            params = data["parameters"]
-            if isinstance(params, list):
-                param_str = "\n".join(f"  - {p}" for p in params)
-            else:
-                param_str = str(params)
-            parts.append(f"\nParameters:\n{param_str}")
-        
-        return Document(
-            content="\n".join(parts),
-            source_file=str(filepath),
-            doc_type=data.get("type", "function"),
-            module_name=data.get("module", ""),
-            class_name=data.get("class_name", ""),
-            function_name=data.get("name", name),
-            signature=data.get("signature", ""),
-            return_type=data.get("return_type", ""),
-            api_category=data.get("category", ""),
-            software=self.software,
-            imports=data.get("imports", []),
-            related_functions=data.get("related", []),
-        )
-
-
-class HTMLParser_Custom:
-    """Parse HTML API documentation pages."""
-    
-    def __init__(self, software: str = "ansa"):
-        self.software = software
-    
-    def parse_file(self, filepath: Path) -> list[Document]:
-        """Parse HTML documentation file."""
-        html_content = filepath.read_text(encoding="utf-8", errors="ignore")
-        
-        # Strip HTML tags, keep text structure
-        text = self._strip_html(html_content)
-        
-        # Split into sections (by headers or function definitions)
-        sections = self._split_sections(text)
-        
-        documents = []
-        for section in sections:
-            if len(section.strip()) < 50:  # Skip very short sections
-                continue
-            
-            doc = Document(
-                content=section.strip(),
-                source_file=str(filepath),
-                doc_type=self._classify_section(section),
-                software=self.software,
-                module_name=self._extract_module(section),
-                function_name=self._extract_function_name(section),
-            )
-            documents.append(doc)
-        
-        return documents
-    
-    def _strip_html(self, html: str) -> str:
-        """Remove HTML tags preserving text content."""
-        # Remove script/style blocks
-        html = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL)
-        # Replace block elements with newlines
-        html = re.sub(r"<(br|p|div|h[1-6]|li|tr)[^>]*>", "\n", html, flags=re.IGNORECASE)
-        # Remove remaining tags
-        html = re.sub(r"<[^>]+>", "", html)
-        # Decode entities
-        html = html.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
-        html = html.replace("&nbsp;", " ").replace("&quot;", '"')
-        # Collapse whitespace
-        html = re.sub(r"\n{3,}", "\n\n", html)
-        return html.strip()
-    
-    def _split_sections(self, text: str) -> list[str]:
-        """Split text into logical sections."""
-        # Split on function/class definitions or double newlines
-        patterns = [
-            r"(?=\n(?:class|def|function)\s+\w+)",
-            r"\n{2,}(?=[A-Z])",
-        ]
-        
-        sections = [text]
-        for pattern in patterns:
-            new_sections = []
-            for section in sections:
-                parts = re.split(pattern, section)
-                new_sections.extend(parts)
-            sections = new_sections
-        
-        # Limit section size (max 1000 chars each)
-        final_sections = []
-        for section in sections:
-            if len(section) > 1500:
-                # Split long sections at paragraph breaks
-                chunks = section.split("\n\n")
-                current = ""
-                for chunk in chunks:
-                    if len(current) + len(chunk) > 1200:
-                        if current:
-                            final_sections.append(current)
-                        current = chunk
-                    else:
-                        current += "\n\n" + chunk if current else chunk
-                if current:
-                    final_sections.append(current)
-            else:
-                final_sections.append(section)
-        
-        return final_sections
-    
-    def _classify_section(self, text: str) -> str:
-        """Classify section type based on content."""
-        if re.search(r"^class\s+", text, re.MULTILINE):
-            return "class"
-        if re.search(r"^def\s+|^function\s+", text, re.MULTILINE):
-            return "function"
-        if re.search(r"import|from\s+\w+\s+import", text):
-            return "module"
-        return "guide"
-    
-    def _extract_module(self, text: str) -> str:
-        """Extract module name from text."""
-        match = re.search(r"(?:ansa|meta)\.\w+(?:\.\w+)*", text)
-        return match.group(0) if match else ""
-    
-    def _extract_function_name(self, text: str) -> str:
-        """Extract function name from text."""
-        match = re.search(r"(?:def|function)\s+(\w+)", text)
-        return match.group(1) if match else ""
-
-
-class MarkdownParser:
-    """Parse Markdown documentation files."""
-    
-    def __init__(self, software: str = "ansa"):
-        self.software = software
-    
-    def parse_file(self, filepath: Path) -> list[Document]:
-        """Parse Markdown file into sections."""
-        content = filepath.read_text(encoding="utf-8", errors="ignore")
-        sections = re.split(r"\n#{1,3}\s+", content)
-        
-        documents = []
-        for section in sections:
-            if len(section.strip()) < 50:
-                continue
-            
-            # Extract title from first line
-            lines = section.strip().split("\n")
-            title = lines[0].strip("# ").strip()
-            body = "\n".join(lines[1:]).strip()
-            
-            documents.append(Document(
-                content=f"{title}\n\n{body}" if body else title,
-                source_file=str(filepath),
-                doc_type="guide",
-                software=self.software,
-                function_name=title,
-            ))
-        
-        return documents
+    # Space after dot between identifiers
+    sig = re.sub(r'(?<=[A-Za-z0-9_])\.\s+(?=[A-Za-z0-9_])', '.', sig)
+    # Space before opening paren
+    sig = re.sub(r'(?<=[A-Za-z0-9_])\s+\(', '(', sig)
+    # Space after opening paren
+    sig = re.sub(r'\(\s+', '(', sig)
+    # Space before closing paren
+    sig = re.sub(r'\s+\)', ')', sig)
+    # Space before colon in type annotations
+    sig = re.sub(r'(?<=[A-Za-z0-9_\]\)])\s+:', ':', sig)
+    # Space before comma
+    sig = re.sub(r'\s+,', ',', sig)
+    # Ensure space after comma
+    sig = re.sub(r',(?!\s)', ', ', sig)
+    # Collapse double spaces
+    sig = re.sub(r'  +', ' ', sig)
+    return sig.strip()
 
 
 # =============================================================================
-# Ingestion Pipeline
+# Knowledge Extractor
 # =============================================================================
 
-class IngestionPipeline:
-    """Main ingestion pipeline that orchestrates all parsers.
-    
-    Scans a source directory, selects the appropriate parser for each file,
-    and produces a unified list of Document objects ready for embedding.
+class KnowledgeExtractor:
+    """Extract API knowledge from documentation sources.
+
+    Processes JSON, Python, and HTML files to build a unified
+    knowledge base with records, examples, and a knowledge graph.
     """
-    
-    # Supported file extensions and their parsers
-    PARSER_MAP = {
-        ".py": "python",
-        ".json": "json",
-        ".jsonl": "json",
-        ".html": "html",
-        ".htm": "html",
-        ".md": "markdown",
-    }
-    
-    def __init__(
-        self,
-        source_dir: str | Path,
-        software: str = "ansa",
-        exclude_patterns: list[str] = None,
-    ):
-        """Initialize the ingestion pipeline.
-        
-        Args:
-            source_dir: Directory containing source documentation
-            software: Target software ("ansa" or "meta")
-            exclude_patterns: File patterns to exclude
-        """
-        self.source_dir = Path(source_dir)
+
+    def __init__(self, root_dir: str, software: str = "ansa"):
+        self.root = Path(root_dir)
         self.software = software
-        self.exclude_patterns = exclude_patterns or ["__pycache__", ".git", "node_modules"]
-        
-        # Initialize parsers
-        self._parsers = {
-            "python": PythonSourceParser(software=software),
-            "json": JSONParser(software=software),
-            "html": HTMLParser_Custom(software=software),
-            "markdown": MarkdownParser(software=software),
+        self.records = {}
+        self.examples = []
+        self.stats = {
+            "json_records": 0,
+            "py_records": 0,
+            "html_records": 0,
+            "examples": 0,
         }
-    
-    def run(self) -> list[Document]:
-        """Execute the full ingestion pipeline.
-        
-        Returns:
-            List of Document objects ready for embedding
-        """
-        if not self.source_dir.exists():
-            logger.error(f"Source directory not found: {self.source_dir}")
-            return []
-        
-        documents = []
-        files_processed = 0
-        files_skipped = 0
-        
-        for filepath in self._find_files():
-            parser_type = self.PARSER_MAP.get(filepath.suffix.lower())
-            if not parser_type:
-                files_skipped += 1
+        self.kg_nodes = {}
+        self.kg_edges = set()
+
+    # ------------------------------------------------------------------
+    # Record Management
+    # ------------------------------------------------------------------
+
+    def get_record(self, symbol: str) -> dict:
+        """Get or create a record for an API symbol."""
+        if symbol not in self.records:
+            self.records[symbol] = {
+                "symbol": symbol,
+                "module": None,
+                "type": None,
+                "deprecated": False,
+                "signature": None,
+                "description": None,
+                "docstring": None,
+                "examples": [],
+                "notes": [],
+                "sources": [],
+                "software": self.software,
+            }
+        return self.records[symbol]
+
+    # ------------------------------------------------------------------
+    # Step 1: Extract Archives
+    # ------------------------------------------------------------------
+
+    def extract_archives(self) -> Path:
+        """Extract .tar.gz and .zip archives into _extracted/ folder."""
+        extract_root = self.root / "_extracted"
+        extract_root.mkdir(exist_ok=True)
+
+        for archive in self.root.rglob("*.tar.gz"):
+            if extract_root in archive.parents:
                 continue
-            
+            target = extract_root / archive.stem.replace(".tar", "")
+            target.mkdir(parents=True, exist_ok=True)
             try:
-                parser = self._parsers[parser_type]
-                docs = parser.parse_file(filepath)
-                documents.extend(docs)
-                files_processed += 1
+                with tarfile.open(archive, "r:gz") as tar:
+                    tar.extractall(target)
+                print(f"  [TAR] {archive.name}")
             except Exception as e:
-                logger.error(f"Error processing {filepath}: {e}")
-                files_skipped += 1
-        
-        # Deduplicate by content hash
-        seen_ids = set()
-        unique_docs = []
-        for doc in documents:
-            if doc.doc_id not in seen_ids:
-                seen_ids.add(doc.doc_id)
-                unique_docs.append(doc)
-        
-        logger.info(
-            f"Ingestion complete: {files_processed} files processed, "
-            f"{files_skipped} skipped, {len(unique_docs)} documents extracted "
-            f"(from {len(documents)} total, {len(documents) - len(unique_docs)} duplicates removed)"
-        )
-        
-        return unique_docs
-    
-    def _find_files(self):
-        """Find all parseable files in source directory."""
-        for filepath in self.source_dir.rglob("*"):
-            if not filepath.is_file():
+                print(f"  [FAIL] {archive.name}: {e}")
+
+        for archive in self.root.rglob("*.zip"):
+            if extract_root in archive.parents:
                 continue
-            if any(excl in str(filepath) for excl in self.exclude_patterns):
+            target = extract_root / archive.stem
+            target.mkdir(parents=True, exist_ok=True)
+            try:
+                with zipfile.ZipFile(archive) as z:
+                    z.extractall(target)
+                print(f"  [ZIP] {archive.name}")
+            except Exception as e:
+                print(f"  [FAIL] {archive.name}: {e}")
+
+        return extract_root
+
+    # ------------------------------------------------------------------
+    # Step 2: Build Inventory
+    # ------------------------------------------------------------------
+
+    def build_inventory(self, output_dir: Path) -> list:
+        """Build file inventory and save as CSV."""
+        inventory = []
+        for f in self.root.rglob("*"):
+            if f.is_file():
+                inventory.append({
+                    "name": f.name,
+                    "extension": f.suffix.lower(),
+                    "size_bytes": f.stat().st_size,
+                    "path": str(f.relative_to(self.root)),
+                })
+
+        inventory_file = output_dir / "full_inventory.csv"
+        with open(inventory_file, "w", newline="", encoding="utf-8") as fp:
+            writer = csv.DictWriter(fp, fieldnames=["name", "extension", "size_bytes", "path"])
+            writer.writeheader()
+            writer.writerows(inventory)
+
+        print(f"  Inventory: {len(inventory)} files -> {inventory_file}")
+        return inventory
+
+    # ------------------------------------------------------------------
+    # JSON Parser
+    # ------------------------------------------------------------------
+
+    def process_json(self, file: Path):
+        """Process JSON files containing API documentation."""
+        try:
+            content = file.read_text(encoding="utf-8", errors="ignore")
+            data = json.loads(content)
+        except Exception:
+            return
+
+        if not isinstance(data, list):
+            return
+
+        for item in data:
+            symbol = item.get("name")
+            if not symbol:
                 continue
-            if filepath.suffix.lower() in self.PARSER_MAP:
-                yield filepath
-    
-    def get_stats(self, documents: list[Document]) -> dict:
-        """Get ingestion statistics."""
-        return {
-            "total_documents": len(documents),
-            "by_type": self._count_by(documents, "doc_type"),
-            "by_module": self._count_by(documents, "module_name"),
-            "by_software": self._count_by(documents, "software"),
-            "avg_content_length": (
-                sum(len(d.content) for d in documents) / max(len(documents), 1)
-            ),
+
+            rec = self.get_record(symbol)
+            item_type = item.get("type")
+
+            if item_type == "deprecated":
+                rec["deprecated"] = True
+            else:
+                rec["type"] = rec["type"] or item_type
+
+            rec["description"] = rec["description"] or item.get("description")
+            rec["docstring"] = rec["docstring"] or item.get("text")
+            rec["sources"].append(str(file))
+            self.stats["json_records"] += 1
+
+    # ------------------------------------------------------------------
+    # Python Parser
+    # ------------------------------------------------------------------
+
+    def process_python(self, file: Path):
+        """Process Python source files (stubs with docstrings)."""
+        try:
+            content = file.read_text(encoding="utf-8", errors="ignore")
+            tree = ast.parse(content)
+        except Exception:
+            return
+
+        module = file.stem
+        functions_found = []
+        api_calls = set()
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                symbol = f"{module}.{node.name}"
+                functions_found.append(node.name)
+
+                rec = self.get_record(symbol)
+                rec["module"] = module
+                rec["type"] = rec["type"] or "function"
+
+                try:
+                    rec["signature"] = rec["signature"] or ast.unparse(node.args)
+                except Exception:
+                    pass
+
+                doc = ast.get_docstring(node)
+                if doc:
+                    rec["docstring"] = rec["docstring"] or doc
+
+                # Return type -> KG edge
+                if node.returns:
+                    try:
+                        return_type = ast.unparse(node.returns)
+                        self.add_node(f"TYPE::{return_type}", node_type="Type")
+                        self.add_edge(symbol, f"TYPE::{return_type}", "RETURNS")
+                    except Exception:
+                        pass
+
+                rec["sources"].append(str(file))
+                self.stats["py_records"] += 1
+
+            elif isinstance(node, ast.ClassDef):
+                symbol = f"{module}.{node.name}"
+                rec = self.get_record(symbol)
+                rec["module"] = module
+                rec["type"] = rec["type"] or "class"
+
+                doc = ast.get_docstring(node)
+                if doc:
+                    rec["docstring"] = rec["docstring"] or doc
+                rec["sources"].append(str(file))
+
+            elif isinstance(node, ast.Call):
+                try:
+                    api_calls.add(ast.unparse(node.func))
+                except Exception:
+                    pass
+
+        # Track example files
+        if any(kw in file.name.lower() for kw in ["example", "canvas", "check", "script"]):
+            self.examples.append({
+                "file": str(file),
+                "functions": functions_found,
+                "api_calls": list(api_calls),
+                "content": content,
+            })
+            self.stats["examples"] += 1
+
+    # ------------------------------------------------------------------
+    # HTML Parser (Sphinx-aware)
+    # ------------------------------------------------------------------
+
+    def _text_skip_code(self, tag) -> str:
+        """Recursively extract text, skipping highlight code blocks."""
+        parts = []
+        for child in tag.children:
+            if isinstance(child, Tag):
+                cls = child.get("class") or []
+                if any("highlight" in c for c in cls):
+                    continue
+                parts.append(self._text_skip_code(child))
+            else:
+                s = str(child).strip()
+                if s:
+                    parts.append(s)
+        return " ".join(filter(None, parts))
+
+    def process_html(self, file: Path):
+        """Process Sphinx HTML API reference pages."""
+        if BeautifulSoup is None:
+            return
+
+        try:
+            html = file.read_text(encoding="utf-8", errors="ignore")
+            soup = BeautifulSoup(html, "html.parser")
+        except Exception:
+            return
+
+        for entry in soup.select("dt[id]"):
+            symbol = entry.get("id")
+            if not symbol:
+                continue
+
+            # Determine type from HTML structure
+            rec_type = None
+            prop = entry.find("em", class_="property")
+            if prop:
+                prop_text = prop.get_text(strip=True).lower()
+                if "class" in prop_text:
+                    rec_type = "class"
+                elif "method" in prop_text or "function" in prop_text:
+                    rec_type = "function"
+                else:
+                    rec_type = "attribute"
+            if not rec_type and entry.find("span", class_="sig-paren"):
+                rec_type = "function"
+
+            # Extract signature
+            anchor = entry.find("a", class_="headerlink")
+            anchor_text = anchor.get_text() if anchor else "#"
+            raw_sig = re.sub(r"\s+", " ", entry.get_text(" ", strip=True))
+            signature = clean_signature(raw_sig.replace(anchor_text, ""))
+
+            # Extract description and docstring from <dd>
+            dd = entry.find_next_sibling("dd")
+            description = None
+            docstring = None
+            notes = []
+
+            if dd:
+                first_p = dd.find("p")
+                if first_p:
+                    description = re.sub(r"\s+", " ", first_p.get_text(" ", strip=True))
+
+                for cb in dd.find_all("div", class_=re.compile(r"highlight")):
+                    code = cb.get_text().strip()
+                    if code:
+                        notes.append(code)
+
+                full_text = re.sub(r"\s+", " ", self._text_skip_code(dd))
+                if len(full_text) > 30:
+                    docstring = full_text
+
+            # Update record
+            rec = self.get_record(symbol)
+            if rec_type:
+                rec["type"] = rec["type"] or rec_type
+            if signature and not rec["signature"]:
+                rec["signature"] = signature
+            if description and not rec["description"]:
+                rec["description"] = description
+            if docstring and not rec["docstring"]:
+                rec["docstring"] = docstring
+            if notes:
+                rec["notes"].extend(notes)
+
+            # Deprecated detection
+            if dd:
+                depr_div = dd.find("div", class_=re.compile(r"deprecated"))
+                if depr_div or (description and re.search(r"^Deprecated", description, re.I)):
+                    rec["deprecated"] = True
+
+            rec["sources"].append(str(file))
+            self.stats["html_records"] += 1
+
+    # ------------------------------------------------------------------
+    # Signature Second Pass
+    # ------------------------------------------------------------------
+
+    def _fill_missing_signatures(self) -> int:
+        """Extract signatures from python fences in docstrings."""
+        filled = 0
+        for rec in self.records.values():
+            if rec.get("signature"):
+                continue
+            sig = self._sig_from_docstring(rec.get("docstring"))
+            if sig:
+                rec["signature"] = sig
+                filled += 1
+        return filled
+
+    def _sig_from_docstring(self, docstring: str) -> Optional[str]:
+        """Extract signature from first python fence in docstring."""
+        if not docstring:
+            return None
+        m = re.search(r'```python\s*\n(.*?)```', docstring, re.DOTALL)
+        if not m:
+            return None
+        raw = m.group(1).strip()
+        first_line = raw.split("\n")[0]
+        if re.match(r'^(#|import\s|from\s)', first_line):
+            return None
+        if first_line.startswith("(variable)"):
+            sig = re.sub(r'^\(variable\)\s*', '', raw).strip()
+            return clean_signature(re.sub(r'\s+', ' ', sig)) or None
+        raw = re.sub(r'^\(\w+\)\s+', '', raw)
+        if not re.match(r'^(?:async\s+)?(?:def|class)\s', raw):
+            return None
+        raw = re.sub(r'^(?:async\s+)?def\s+', '', raw)
+        raw = re.sub(r'\s+', ' ', raw).strip()
+        return clean_signature(raw) or None
+
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
+
+    def validate(self) -> tuple:
+        """Split records into valid and invalid."""
+        valid, invalid = [], []
+        for rec in self.records.values():
+            if not rec["symbol"]:
+                invalid.append(rec)
+            elif not any([rec["description"], rec["docstring"], rec["signature"]]):
+                invalid.append(rec)
+            else:
+                valid.append(rec)
+        return valid, invalid
+
+    # ------------------------------------------------------------------
+    # Knowledge Graph
+    # ------------------------------------------------------------------
+
+    def add_node(self, node_id: str, node_type: str, **properties):
+        if not node_id:
+            return
+        if node_id not in self.kg_nodes:
+            self.kg_nodes[node_id] = {"id": node_id, "type": node_type}
+        elif node_type != "Unknown":
+            if self.kg_nodes[node_id].get("type") == "Unknown":
+                self.kg_nodes[node_id]["type"] = node_type
+        self.kg_nodes[node_id].update(properties)
+
+    def add_edge(self, source: str, target: str, relationship: str):
+        if source and target:
+            self.kg_edges.add((str(source), str(target), relationship))
+
+    def build_knowledge_graph(self):
+        """Build KG from extracted records."""
+        for symbol, rec in self.records.items():
+            node_type = rec.get("type") or "Unknown"
+            self.add_node(symbol, node_type=node_type, module=rec.get("module"),
+                          deprecated=rec.get("deprecated", False))
+
+            # BELONGS_TO
+            module = rec.get("module")
+            if module:
+                self.add_node(module, node_type="Module")
+                self.add_edge(symbol, module, "BELONGS_TO")
+
+            # DEPRECATED_BY
+            if rec.get("deprecated"):
+                content_str = (rec.get("description") or "") + " " + (rec.get("docstring") or "")
+                repl = re.search(r':py:\w+:`([^`]+)`', content_str)
+                if not repl:
+                    repl = re.search(r'[Uu]se\s+`?([A-Za-z][A-Za-z0-9_.]{4,})`?', content_str)
+                if repl:
+                    replacement = repl.group(1).strip("`").strip()
+                    self.add_node(replacement, node_type="Unknown")
+                    self.add_edge(symbol, replacement, "DEPRECATED_BY")
+
+            # USES_TYPE from signature
+            sig = rec.get("signature")
+            if sig:
+                for dtype in re.findall(r':\s*([A-Za-z0-9_\[\]\|\.]+)', sig):
+                    self.add_node(f"TYPE::{dtype}", node_type="Type")
+                    self.add_edge(symbol, f"TYPE::{dtype}", "USES_TYPE")
+
+            # CLASS -> HAS_METHOD
+            parts = symbol.split(".")
+            if len(parts) >= 3:
+                class_candidate = ".".join(parts[:-1])
+                if class_candidate in self.records:
+                    if (self.records[class_candidate].get("type") or "").lower() == "class":
+                        self.add_edge(class_candidate, symbol, "HAS_METHOD")
+
+            # SEE_ALSO
+            content_str = rec.get("docstring") or ""
+            for target in re.findall(r'ansa\.[A-Za-z0-9_.]+', content_str):
+                if target != symbol:
+                    self.add_node(target, node_type="Unknown")
+                    self.add_edge(symbol, target, "SEE_ALSO")
+
+        # Examples -> USES edges
+        for ex in self.examples:
+            ex_node = f"EXAMPLE::{Path(ex['file']).name}"
+            self.add_node(ex_node, node_type="Example")
+            for api in ex.get("api_calls", []):
+                self.add_node(api, node_type="Unknown")
+                self.add_edge(ex_node, api, "USES")
+
+    # ------------------------------------------------------------------
+    # Write Output Files
+    # ------------------------------------------------------------------
+
+    def write(self, output_dir: Path) -> dict:
+        """Write all output files to output directory."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        valid, invalid = self.validate()
+
+        # coderag_documents.jsonl
+        docs_file = output_dir / "coderag_documents.jsonl"
+        with open(docs_file, "w", encoding="utf-8") as fp:
+            for record in valid:
+                fp.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        # coderag_examples.jsonl
+        examples_file = output_dir / "coderag_examples.jsonl"
+        with open(examples_file, "w", encoding="utf-8") as fp:
+            for ex in self.examples:
+                fp.write(json.dumps(ex, ensure_ascii=False) + "\n")
+
+        # Knowledge graph
+        self.build_knowledge_graph()
+
+        nodes_file = output_dir / "kg_nodes.jsonl"
+        with open(nodes_file, "w", encoding="utf-8") as fp:
+            for node in self.kg_nodes.values():
+                fp.write(json.dumps(node, ensure_ascii=False) + "\n")
+
+        edges_file = output_dir / "kg_edges.jsonl"
+        with open(edges_file, "w", encoding="utf-8") as fp:
+            for source, target, rel in self.kg_edges:
+                fp.write(json.dumps({"source": source, "target": target, "relationship": rel}, ensure_ascii=False) + "\n")
+
+        # Manifest
+        manifest = {
+            "total_records": len(self.records),
+            "valid_records": len(valid),
+            "invalid_records": len(invalid),
+            "deprecated_records": sum(1 for r in self.records.values() if r.get("deprecated")),
+            "examples_count": len(self.examples),
+            "kg_nodes": len(self.kg_nodes),
+            "kg_edges": len(self.kg_edges),
+            "software": self.software,
+            **self.stats,
+            "output_files": {
+                "documents": str(docs_file),
+                "examples": str(examples_file),
+                "kg_nodes": str(nodes_file),
+                "kg_edges": str(edges_file),
+            },
         }
-    
-    def _count_by(self, documents: list[Document], field: str) -> dict:
-        """Count documents by a metadata field."""
-        counts = {}
-        for doc in documents:
-            val = getattr(doc, field, "") or "unknown"
-            counts[val] = counts.get(val, 0) + 1
-        return dict(sorted(counts.items(), key=lambda x: -x[1]))
+
+        manifest_file = output_dir / "knowledge_manifest.json"
+        with open(manifest_file, "w", encoding="utf-8") as fp:
+            json.dump(manifest, fp, indent=2)
+
+        return manifest
+
+    # ------------------------------------------------------------------
+    # Main Pipeline
+    # ------------------------------------------------------------------
+
+    def run(self, output_dir: Optional[str] = None) -> dict:
+        """Run the full extraction pipeline."""
+        out = Path(output_dir) if output_dir else self.root
+
+        print(f"\n{'='*60}")
+        print(f"  Knowledge Extraction Pipeline")
+        print(f"  Source: {self.root}")
+        print(f"  Software: {self.software}")
+        print(f"{'='*60}\n")
+
+        # 1. Extract archives
+        print("[1/6] Extracting archives...")
+        self.extract_archives()
+
+        # 2. Build inventory
+        print("[2/6] Building file inventory...")
+        self.build_inventory(out)
+
+        # 3. Process JSON
+        print("[3/6] Processing JSON files...")
+        json_files = list(self.root.rglob("*.json"))
+        for file in tqdm(json_files, desc="  JSON", unit="file"):
+            self.process_json(file)
+
+        # 4. Process Python
+        print("[4/6] Processing Python files...")
+        py_files = list(self.root.rglob("*.py"))
+        for file in tqdm(py_files, desc="  Python", unit="file"):
+            self.process_python(file)
+
+        # 5. Process HTML
+        print("[5/6] Processing HTML files...")
+        html_files = [
+            f for f in self.root.rglob("*.html")
+            if not any(part in _HTML_NOISE_DIRS for part in f.parts)
+            and f.name not in _HTML_NOISE_FILES
+        ]
+        for file in tqdm(html_files, desc="  HTML", unit="file"):
+            self.process_html(file)
+
+        # 6. Signature second pass + write
+        print("[6/6] Finalizing...")
+        filled = self._fill_missing_signatures()
+        print(f"  Signature second pass: {filled} filled from docstrings")
+
+        manifest = self.write(out)
+
+        # Summary
+        print(f"\n{'='*60}")
+        print(f"  EXTRACTION COMPLETE")
+        print(f"{'='*60}")
+        print(f"  Valid records:      {manifest['valid_records']:,}")
+        print(f"  Invalid (skipped):  {manifest['invalid_records']:,}")
+        print(f"  Deprecated:         {manifest['deprecated_records']:,}")
+        print(f"  Examples:           {manifest['examples_count']:,}")
+        print(f"  KG nodes:           {manifest['kg_nodes']:,}")
+        print(f"  KG edges:           {manifest['kg_edges']:,}")
+        print(f"  JSON records:       {manifest['json_records']:,}")
+        print(f"  Python records:     {manifest['py_records']:,}")
+        print(f"  HTML records:       {manifest['html_records']:,}")
+        print(f"\n  Output: {out}")
+        print()
+
+        return manifest
 
 
 # =============================================================================
-# CLI Entry Point
+# CLI
 # =============================================================================
 
 if __name__ == "__main__":
-    import sys
     import argparse
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(message)s",
-    )
-    
-    parser = argparse.ArgumentParser(
-        description="Ingest ANSA/META documentation into structured Document objects",
-        epilog="""
-Examples:
-  # Point to your ANSA python docs
-  python ingest.py "C:\\BETA_CAE_Systems\\ANSA_v2025.2.2\\python"
-  
-  # Linux
-  python ingest.py /opt/BETA_CAE_Systems/ansa_v2025.2.2/python
-  
-  # Custom directory
-  python ingest.py /path/to/my/docs --software meta
 
-Note: This only PARSES files. To build the searchable vector database,
-      use build_vector_db.py instead (it calls ingest internally).
-""",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+    logging.basicConfig(level=logging.INFO)
+
+    parser = argparse.ArgumentParser(
+        description="Extract ANSA/META API knowledge from documentation sources"
     )
     parser.add_argument(
         "source_dir",
-        help="Directory containing ANSA/META documentation (.py, .html, .json, .jsonl, .md)"
+        help="Directory containing docs (.py, .html, .json, .md)",
     )
     parser.add_argument(
-        "--software", default="ansa", choices=["ansa", "meta"],
-        help="Target software (default: ansa)"
+        "--software",
+        default="ansa",
+        choices=["ansa", "meta"],
+        help="Software identifier (default: ansa)",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Output directory for JSONL files (default: same as source_dir)",
     )
     args = parser.parse_args()
-    
-    pipeline = IngestionPipeline(source_dir=args.source_dir, software=args.software)
-    documents = pipeline.run()
-    
-    if not documents:
-        print("\n  ERROR: No documents found!")
-        print(f"  Directory: {args.source_dir}")
-        print("  Check that the path contains .py, .html, .json, .jsonl, or .md files.")
-        sys.exit(1)
-    
-    stats = pipeline.get_stats(documents)
-    print(f"\n{'='*60}")
-    print(f"  Ingestion Complete")
-    print(f"{'='*60}")
-    print(f"  Source          : {args.source_dir}")
-    print(f"  Software        : {args.software}")
-    print(f"  Total documents : {stats['total_documents']}")
-    print(f"  Avg content len : {stats['avg_content_length']:.0f} chars")
-    print(f"  By type         : {stats['by_type']}")
-    print(f"  By module       : {dict(list(stats['by_module'].items())[:10])}")
-    print(f"{'='*60}")
-    print(f"\n  Next step: Build the vector database with:")
-    print(f"    python bin/build_vector_db.py --source \"{args.source_dir}\"")
-    print()
+
+    extractor = KnowledgeExtractor(
+        root_dir=args.source_dir,
+        software=args.software,
+    )
+    extractor.run(output_dir=args.output)
