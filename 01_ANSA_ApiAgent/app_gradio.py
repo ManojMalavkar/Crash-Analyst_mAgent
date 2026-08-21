@@ -59,12 +59,12 @@ def get_agent() -> CodeRAGAgent:
 # Chat Handler
 # =============================================================================
 
-def chat_handler(message: str, history: list[list]) -> tuple[str, list[list]]:
+def chat_handler(message: str, history: list[dict]) -> tuple[str, list[dict]]:
     """Handle a user message and return the agent response.
     
     Args:
         message: User's input message
-        history: Gradio chat history [[user, assistant], ...]
+        history: Gradio chat history [{"role": ..., "content": ...}, ...]
     
     Returns:
         Tuple of (empty string to clear input, updated history)
@@ -80,7 +80,8 @@ def chat_handler(message: str, history: list[list]) -> tuple[str, list[list]]:
         logger.error(f"Agent error: {e}")
         response = f"Error: {str(e)}\n\nPlease try again or reset the conversation."
     
-    history.append([message, response])
+    history.append({"role": "user", "content": message})
+    history.append({"role": "assistant", "content": response})
     return "", history
 
 
@@ -156,8 +157,6 @@ def build_ui() -> gr.Blocks:
     
     with gr.Blocks(
         title="SafetyAgent — ANSA/META CodeRAG",
-        theme=gr.themes.Soft(),
-        css=CSS,
     ) as app:
         
         # Header
@@ -199,7 +198,7 @@ def build_ui() -> gr.Blocks:
             # Side panel (right, narrower)
             with gr.Column(scale=1):
                 gr.Markdown("### Knowledge Base")
-                kb_status = gr.Markdown(value=get_kb_status, every=30)
+                kb_status = gr.Markdown(value=get_kb_status())
                 
                 gr.Markdown("### Example Queries")
                 for example in EXAMPLE_QUERIES:

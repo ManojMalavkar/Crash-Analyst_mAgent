@@ -391,15 +391,19 @@ if __name__ == "__main__":
         description="Build ANSA/META vector database from extracted JSONL",
         epilog="""
 Examples:
-  # After running ingest.py first:
-  python bin/build_vector_db.py --source knowledge-base/coderag_documents.jsonl --rebuild
+  # After running ingest.py (uses default source path):
+  python bin/build_vector_db.py --rebuild
   
   # Incremental (only add new records):
-  python bin/build_vector_db.py --source knowledge-base/coderag_documents.jsonl
+  python bin/build_vector_db.py
+  
+  # Custom source path:
+  python bin/build_vector_db.py --source /path/to/coderag_documents.jsonl
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--source", required=True, help="Path to coderag_documents.jsonl")
+    default_source = str(Path(__file__).resolve().parent.parent / "knowledge-base" / "coderag_documents.jsonl")
+    parser.add_argument("--source", default=default_source, help=f"Path to coderag_documents.jsonl (default: {default_source})")
     parser.add_argument("--persist-dir", default=None, help="ChromaDB persist directory")
     parser.add_argument("--collection", default="api", help="Collection name")
     parser.add_argument("--rebuild", action="store_true", help="Rebuild collection from scratch")
