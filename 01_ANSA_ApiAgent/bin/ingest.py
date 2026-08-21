@@ -24,9 +24,8 @@ Output files (written to knowledge-base/):
   - full_inventory.csv        -> File inventory of source directory
 
 Usage:
-    python bin/ingest.py /path/to/api_ref_ansa --software ansa
-    python bin/ingest.py /path/to/api_ref_meta --software meta
-    python bin/ingest.py /path/to/docs --software ansa --output knowledge-base/
+    python bin/ingest.py /path/to/html/reference/
+    python bin/ingest.py /path/to/docs --output /custom/path/  (optional override)
 """
 
 import re
@@ -60,7 +59,8 @@ logger = logging.getLogger(__name__)
 
 _HTML_NOISE_DIRS = {
     "_static", "_images", "_downloads",
-    "_sphinx_design_static", "_sources"
+    "_sphinx_design_static", "_sources",
+    ".doctrees"
 }
 _HTML_NOISE_FILES = {
     "genindex.html", "search.html",
@@ -330,6 +330,10 @@ class KnowledgeExtractor:
     def process_html(self, file: Path):
         """Process Sphinx HTML API reference pages."""
         if BeautifulSoup is None:
+            if not getattr(self, "_bs4_warned", False):
+                print("  WARNING: beautifulsoup4 not installed — skipping all HTML files")
+                print("  Fix: pip install beautifulsoup4")
+                self._bs4_warned = True
             return
 
         try:
@@ -676,21 +680,24 @@ if __name__ == "__main__":
         "source_dir",
         help="Directory containing docs (.py, .html, .json, .md)",
     )
-    parser.add_argument(
-        "--software",
-        default="ansa",
-        choices=["ansa", "meta"],
-        help="Software identifier (default: ansa)",
-    )
+    # --output is optional; defaults to knowledge-base/ next to bin/
+    default_output = str(Path(__file__).resolve().parent.parent / "knowledge-base")
     parser.add_argument(
         "--output",
-        default=None,
-        help="Output directory for JSONL files (default: same as source_dir)",
+        default=default_output,
+        help=f"Output directory for JSONL files (default: {default_output})",
     )
     args = parser.parse_args()
 
+    # Auto-detect software from folder name (silent metadata tag)
+    source_lower = args.source_dir.lower()
+    if "meta" in source_lower:
+        software = "meta"
+    else:
+        software = "ansa"
+
     extractor = KnowledgeExtractor(
         root_dir=args.source_dir,
-        software=args.software,
+        software=software,
     )
     extractor.run(output_dir=args.output)
