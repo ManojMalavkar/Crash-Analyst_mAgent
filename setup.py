@@ -297,13 +297,13 @@ def main():
     # Step 4: Build knowledge bases (smart — skip if already present)
     step(4, total_steps, "Building knowledge bases")
 
-    # 4a: ANSA/META API vector DB
-    api_db_exists = check_vector_db_exists("ansa_meta_api")
+    # 4a: API vector DB (ansa + meta combined)
+    api_db_exists = check_vector_db_exists("api")
     if api_db_exists:
-        success("ANSA/META API vector database already exists — skipping")
+        success("API vector database already exists — skipping")
         kb_ok = True
     else:
-        print("  ANSA/META API vector database not found.")
+        print("  API vector database not found.")
         docs_path = get_docs_path()
         if docs_path:
             kb_ok = build_knowledge_base(docs_path)

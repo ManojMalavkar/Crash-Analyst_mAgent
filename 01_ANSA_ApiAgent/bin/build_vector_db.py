@@ -123,7 +123,7 @@ class EmbeddingModel:
 class VectorStoreBuilder:
     """Builds and manages ChromaDB vector collections."""
     
-    DEFAULT_COLLECTION = "ansa_meta_api"
+    DEFAULT_COLLECTION = "api"
     
     def __init__(
         self,
@@ -401,7 +401,7 @@ Examples:
     )
     parser.add_argument("--source", required=True, help="Path to coderag_documents.jsonl")
     parser.add_argument("--persist-dir", default=None, help="ChromaDB persist directory")
-    parser.add_argument("--collection", default="ansa_meta_api", help="Collection name")
+    parser.add_argument("--collection", default="api", help="Collection name")
     parser.add_argument("--rebuild", action="store_true", help="Rebuild collection from scratch")
     args = parser.parse_args()
     
