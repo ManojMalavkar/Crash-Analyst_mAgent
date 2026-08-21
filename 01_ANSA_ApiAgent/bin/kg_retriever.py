@@ -17,11 +17,19 @@ Features:
 - Combinable with vector search for hybrid retrieval
 
 Usage:
+    # Build from JSONL (CLI):
+    python bin/kg_retriever.py
+    
+    # Programmatic:
     from bin.kg_retriever import KnowledgeGraph
     
     kg = KnowledgeGraph()
-    kg.build_from_documents(documents)
+    kg.build_from_jsonl("knowledge-base/")
     kg.save("vector_db/knowledge_graph.pkl")
+    
+    # Or load existing:
+    kg = KnowledgeGraph()
+    kg.load("vector_db/knowledge_graph.pkl")
     
     # Query
     methods = kg.get_class_methods("ansa.base.Entity")
@@ -37,10 +45,7 @@ from dataclasses import dataclass
 
 import networkx as nx
 
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-from bin.ingest import Document
+import json
 
 
 logger = logging.getLogger(__name__)
@@ -85,67 +90,62 @@ class KnowledgeGraph:
     # Graph Construction
     # -------------------------------------------------------------------------
     
-    def build_from_documents(self, documents: list[Document]) -> dict:
-        """Build the knowledge graph from ingested documents.
+    def build_from_jsonl(self, knowledge_base_dir: str | Path) -> dict:
+        """Build the knowledge graph from JSONL files produced by ingest.py.
         
         Args:
-            documents: List of Document objects from ingestion pipeline
+            knowledge_base_dir: Directory containing kg_nodes.jsonl and kg_edges.jsonl
             
         Returns:
             Build statistics
         """
-        nodes_added = 0
-        edges_added = 0
+        kb_dir = Path(knowledge_base_dir)
+        nodes_file = kb_dir / "kg_nodes.jsonl"
+        edges_file = kb_dir / "kg_edges.jsonl"
         
-        for doc in documents:
-            # Add node
-            full_name = self._get_full_name(doc)
-            if not full_name:
-                continue
-            
-            self.graph.add_node(full_name, **{
-                "type": doc.doc_type,
-                "module": doc.module_name,
-                "docstring": doc.content[:200],
-                "signature": doc.signature,
-                "software": doc.software,
-            })
-            nodes_added += 1
-            
-            # Index short name for fuzzy lookup
-            short_name = full_name.split(".")[-1]
-            self._name_index[short_name.lower()] = full_name
-            self._name_index[full_name.lower()] = full_name
-            
-            # Add edges based on relationships
-            
-            # 1. Class inheritance
-            if doc.parent_class:
-                parent_full = self._resolve_name(doc.parent_class)
-                self.graph.add_edge(full_name, parent_full, relation=self.EDGE_INHERITS)
-                edges_added += 1
-            
-            # 2. Method -> Class
-            if doc.doc_type == "method" and doc.class_name:
-                class_full = f"{doc.module_name}.{doc.class_name}" if doc.module_name else doc.class_name
-                self.graph.add_edge(class_full, full_name, relation=self.EDGE_HAS_METHOD)
-                edges_added += 1
-            
-            # 3. Symbol -> Module
-            if doc.module_name:
-                self.graph.add_edge(full_name, doc.module_name, relation=self.EDGE_BELONGS_TO)
-                edges_added += 1
-            
-            # 4. Related functions
-            for related in doc.related_functions:
-                related_full = self._resolve_name(related)
-                self.graph.add_edge(full_name, related_full, relation=self.EDGE_RELATED)
-                edges_added += 1
-            
-            # 5. Imports
-            for imp in doc.imports:
-                self.graph.add_edge(full_name, imp, relation=self.EDGE_IMPORTS)
-                edges_added += 1
+        if not nodes_file.exists():
+            raise FileNotFoundError(f"Nodes file not found: {nodes_file}")
+        if not edges_file.exists():
+            raise FileNotFoundError(f"Edges file not found: {edges_file}")
+        
+        # Load nodes
+        nodes_added = 0
+        with open(nodes_file, "r", encoding="utf-8") as fp:
+            for line in fp:
+                if not line.strip():
+                    continue
+                node = json.loads(line)
+                node_id = node.get("id") or node.get("node_id", "")
+                if not node_id:
+                    continue
+                
+                self.graph.add_node(node_id, **{
+                    "type": node.get("type", "unknown"),
+                    "module": node.get("module", ""),
+                    "docstring": node.get("description", "")[:200],
+                    "signature": node.get("signature", ""),
+                    "software": node.get("software", ""),
+                })
+                nodes_added += 1
+                
+                # Index short name for fuzzy lookup
+                short_name = node_id.split(".")[-1]
+                self._name_index[short_name.lower()] = node_id
+                self._name_index[node_id.lower()] = node_id
+        
+        # Load edges
+        edges_added = 0
+        with open(edges_file, "r", encoding="utf-8") as fp:
+            for line in fp:
+                if not line.strip():
+                    continue
+                edge = json.loads(line)
+                source = edge.get("source", "")
+                target = edge.get("target", "")
+                rel = edge.get("relationship", "related_to")
+                if source and target:
+                    self.graph.add_edge(source, target, relation=rel)
+                    edges_added += 1
         
         stats = {
             "nodes": self.graph.number_of_nodes(),
@@ -376,18 +376,6 @@ class KnowledgeGraph:
     # Private Helpers
     # -------------------------------------------------------------------------
     
-    def _get_full_name(self, doc: Document) -> str:
-        """Get fully qualified name from a document."""
-        if doc.module_name and doc.class_name and doc.function_name:
-            return f"{doc.module_name}.{doc.class_name}.{doc.function_name}"
-        elif doc.module_name and doc.class_name:
-            return f"{doc.module_name}.{doc.class_name}"
-        elif doc.module_name and doc.function_name:
-            return f"{doc.module_name}.{doc.function_name}"
-        elif doc.function_name:
-            return doc.function_name
-        return ""
-    
     def _resolve_name(self, name: str) -> str:
         """Resolve a short or partial name to its full qualified name."""
         # Try exact match first
@@ -406,26 +394,60 @@ if __name__ == "__main__":
     
     logging.basicConfig(level=logging.INFO)
     
-    parser = argparse.ArgumentParser(description="Build API knowledge graph")
-    parser.add_argument("--source", default="knowledge-base/raw", help="Source directory")
-    parser.add_argument("--output", default="vector_db/knowledge_graph.pkl", help="Output pickle file")
-    parser.add_argument("--software", default="ansa", choices=["ansa", "meta"])
+    default_kb = str(Path(__file__).resolve().parent.parent / "knowledge-base")
+    default_output = str(Path(__file__).resolve().parent.parent / "vector_db" / "knowledge_graph.pkl")
+    
+    parser = argparse.ArgumentParser(
+        description="Build API knowledge graph from JSONL files",
+        epilog="""
+Examples:
+  # Default (no args needed):
+  python bin/kg_retriever.py
+  
+  # Custom paths:
+  python bin/kg_retriever.py --source /path/to/knowledge-base/ --output /path/to/kg.pkl
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--source", default=default_kb,
+        help=f"Directory containing kg_nodes.jsonl and kg_edges.jsonl (default: {default_kb})"
+    )
+    parser.add_argument(
+        "--output", default=default_output,
+        help=f"Output pickle file (default: {default_output})"
+    )
     args = parser.parse_args()
     
-    from bin.ingest import IngestionPipeline
+    source_path = Path(args.source)
+    if not (source_path / "kg_nodes.jsonl").exists():
+        print(f"\n  ERROR: kg_nodes.jsonl not found in: {source_path}")
+        print(f"  Run ingest.py first to generate JSONL files.")
+        print(f"  Example: python bin/ingest.py /path/to/docs")
+        exit(1)
     
-    # Ingest
-    pipeline = IngestionPipeline(source_dir=args.source, software=args.software)
-    documents = pipeline.run()
+    # Build graph from JSONL
+    print(f"\n{'='*50}")
+    print(f"  Building Knowledge Graph")
+    print(f"  Source: {source_path}")
+    print(f"{'='*50}")
     
-    # Build graph
     kg = KnowledgeGraph()
-    stats = kg.build_from_documents(documents)
+    stats = kg.build_from_jsonl(source_path)
     
-    print(f"\nGraph Statistics:")
-    for k, v in kg.get_stats().items():
-        print(f"  {k}: {v}")
+    print(f"\n  Graph Statistics:")
+    full_stats = kg.get_stats()
+    print(f"    Nodes: {full_stats['total_nodes']:,}")
+    print(f"    Edges: {full_stats['total_edges']:,}")
+    print(f"    Indexed names: {full_stats['indexed_names']:,}")
+    print(f"\n    Node types:")
+    for t, count in sorted(full_stats['node_types'].items(), key=lambda x: -x[1]):
+        print(f"      {t:15s} {count:>6,}")
+    print(f"\n    Edge types:")
+    for r, count in sorted(full_stats['edge_types'].items(), key=lambda x: -x[1]):
+        print(f"      {r:20s} {count:>6,}")
     
     # Save
     kg.save(args.output)
-    print(f"\nSaved to: {args.output}")
+    print(f"\n  Saved to: {args.output}")
+    print(f"{'='*50}\n")

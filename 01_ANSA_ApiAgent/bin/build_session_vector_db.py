@@ -272,8 +272,9 @@ if __name__ == "__main__":
     
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
     
+    default_source = str(Path(__file__).resolve().parent.parent / "knowledge-base" / "session_commands.json")
     parser = argparse.ArgumentParser(description="Build META session commands vector DB")
-    parser.add_argument("--source", required=True, help="Path to session_commands.json")
+    parser.add_argument("--source", default=default_source, help=f"Path to session_commands.json (default: {default_source})")
     parser.add_argument("--persist-dir", default=DEFAULT_PERSIST_DIR, help="ChromaDB persist directory")
     parser.add_argument("--collection", default=DEFAULT_COLLECTION, help="Collection name")
     parser.add_argument("--rebuild", action="store_true", help="Rebuild from scratch")
