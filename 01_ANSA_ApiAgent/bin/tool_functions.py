@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# Paths (relative to this file's location)
+# =============================================================================
+
+_AGENT_DIR = Path(__file__).resolve().parent.parent  # 01_ANSA_ApiAgent/
+_VECTOR_DB_DIR = _AGENT_DIR / "vector_db"
+_KG_PATH = _VECTOR_DB_DIR / "knowledge_graph.pkl"
+
+
+# =============================================================================
 # Singleton Instances (lazy-loaded)
 # =============================================================================
 
@@ -37,7 +46,7 @@ def _get_vector_store() -> VectorStoreBuilder:
     """Get or create the vector store instance."""
     global _vector_store
     if _vector_store is None:
-        _vector_store = VectorStoreBuilder(persist_dir="vector_db")
+        _vector_store = VectorStoreBuilder(persist_dir=str(_VECTOR_DB_DIR))
     return _vector_store
 
 
@@ -46,11 +55,10 @@ def _get_knowledge_graph() -> KnowledgeGraph:
     global _knowledge_graph
     if _knowledge_graph is None:
         _knowledge_graph = KnowledgeGraph()
-        kg_path = Path("vector_db/knowledge_graph.pkl")
-        if kg_path.exists():
-            _knowledge_graph.load(kg_path)
+        if _KG_PATH.exists():
+            _knowledge_graph.load(_KG_PATH)
         else:
-            logger.warning(f"Knowledge graph not found at {kg_path}. Run kg_retriever.py first.")
+            logger.warning(f"Knowledge graph not found at {_KG_PATH}. Run kg_retriever.py first.")
     return _knowledge_graph
 
 

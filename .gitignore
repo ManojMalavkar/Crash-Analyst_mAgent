@@ -26,7 +26,6 @@ ENV/
 vector_db/
 *.chromadb/
 chroma_data/
-01_ANSA_ApiAgent/knowledge-base/html/
 
 # Serialized objects
 *.pkl

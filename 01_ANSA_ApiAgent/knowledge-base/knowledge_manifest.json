@@ -1,0 +1,20 @@
+{
+  "total_records": 13597,
+  "valid_records": 13597,
+  "invalid_records": 0,
+  "deprecated_records": 1520,
+  "examples_count": 0,
+  "kg_nodes": 13722,
+  "kg_edges": 28728,
+  "software": "ansa",
+  "json_records": 0,
+  "py_records": 0,
+  "html_records": 13597,
+  "examples": 0,
+  "output_files": {
+    "documents": "/nobackup/people/t0018k6/script/Github_repo/Crash-Analyst_mAgent/01_ANSA_ApiAgent/knowledge-base/coderag_documents.jsonl",
+    "examples": "/nobackup/people/t0018k6/script/Github_repo/Crash-Analyst_mAgent/01_ANSA_ApiAgent/knowledge-base/coderag_examples.jsonl",
+    "kg_nodes": "/nobackup/people/t0018k6/script/Github_repo/Crash-Analyst_mAgent/01_ANSA_ApiAgent/knowledge-base/kg_nodes.jsonl",
+    "kg_edges": "/nobackup/people/t0018k6/script/Github_repo/Crash-Analyst_mAgent/01_ANSA_ApiAgent/knowledge-base/kg_edges.jsonl"
+  }
+}
