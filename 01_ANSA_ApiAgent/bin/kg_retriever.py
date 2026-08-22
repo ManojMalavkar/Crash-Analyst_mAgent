@@ -74,12 +74,12 @@ class KnowledgeGraph:
     """NetworkX-based knowledge graph for API structural relationships."""
     
     # Edge types
-    EDGE_INHERITS = "inherits_from"      # Class -> Parent class
-    EDGE_HAS_METHOD = "has_method"       # Class -> Method
-    EDGE_BELONGS_TO = "belongs_to"       # Function/Class -> Module
-    EDGE_RELATED = "related_to"          # Function <-> Function
-    EDGE_IMPORTS = "imports"             # Module -> Module
-    EDGE_RETURNS = "returns"             # Function -> Class (return type)
+    EDGE_INHERITS = "INHERITS_FROM"      # Class -> Parent class
+    EDGE_HAS_METHOD = "HAS_METHOD"       # Class -> Method
+    EDGE_BELONGS_TO = "BELONGS_TO"       # Function/Class -> Module
+    EDGE_RELATED = "RELATED_TO"          # Function <-> Function
+    EDGE_IMPORTS = "IMPORTS"             # Module -> Module
+    EDGE_RETURNS = "RETURNS"             # Function -> Class (return type)
     
     def __init__(self):
         """Initialize an empty knowledge graph."""

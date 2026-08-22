@@ -26,6 +26,7 @@ def test_vector_db():
     
     try:
         import chromadb
+        from chromadb.config import Settings as ChromaSettings
         from bin.build_vector_db import VectorStoreBuilder
         
         # Check what path is being used
@@ -40,7 +41,10 @@ def test_vector_db():
             return False
         
         # List collections
-        client = chromadb.PersistentClient(path=str(vector_db_path))
+        client = chromadb.PersistentClient(
+            path=str(vector_db_path),
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
         collections = client.list_collections()
         print(f"  Collections: {[c.name for c in collections]}")
         
@@ -130,7 +134,7 @@ def test_knowledge_graph(query: str = "Entity"):
             print(f"  ERROR: {data['error']}")
             return False
         
-        nodes = data.get("nodes", [])
+        nodes = data.get("results", [])
         print(f"  Found: {len(nodes)} matching nodes")
         for i, n in enumerate(nodes[:5]):
             print(f"  [{i+1}] {n.get('full_name', 'N/A')} ({n.get('type', 'N/A')})")
