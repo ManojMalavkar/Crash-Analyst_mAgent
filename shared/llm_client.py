@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Generator
 from threading import Lock
 
-from openai import OpenAI, APIError, RateLimitError, APITimeoutError
+from openai import OpenAI, APIError, RateLimitError, APITimeoutError, APIConnectionError
 
 from shared.config import settings
 
@@ -119,11 +119,11 @@ class RetryHandler:
         """Determine if the error is retryable."""
         if attempt >= self.max_retries:
             return False
-        # Retry on rate limits, timeouts, and server errors
-        retryable_errors = (RateLimitError, APITimeoutError)
+        # Retry on rate limits, timeouts, connection errors, and server errors
+        retryable_errors = (RateLimitError, APITimeoutError, APIConnectionError)
         if isinstance(error, retryable_errors):
             return True
-        if isinstance(error, APIError) and error.status_code >= 500:
+        if isinstance(error, APIError) and getattr(error, 'status_code', None) and error.status_code >= 500:
             return True
         return False
 

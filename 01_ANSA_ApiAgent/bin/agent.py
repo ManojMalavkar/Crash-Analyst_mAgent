@@ -119,6 +119,9 @@ class CodeRAGAgent:
         self.tool_specs = registry["specs"]
         self.tool_dispatch = registry["dispatch"]
         
+        # Start logging session
+        self.logger.start_session(user_id="cli_user")
+        
         # Conversation state
         self.messages: list[dict] = []
         self._init_conversation()
@@ -152,8 +155,11 @@ class CodeRAGAgent:
         self.messages.append({"role": "user", "content": user_message})
         self._trim_context()
         
-        # Start logging session
-        self.logger.start_conversation(title=user_message[:50])
+        # Start logging conversation (non-fatal if logger fails)
+        try:
+            self.logger.start_conversation(title=user_message[:50])
+        except Exception as log_err:
+            logger.debug(f"Conversation logging failed (non-fatal): {log_err}")
         
         # Tool-calling loop
         tool_calls_made = 0
@@ -260,15 +266,18 @@ class CodeRAGAgent:
             
             logger.debug(f"Tool {func_name} executed in {execution_ms:.0f}ms")
             
-            # Log tool call
-            self.logger.log_tool_call(
-                request_id="",
-                tool_name=func_name,
-                tool_arguments=arguments,
-                tool_result=result[:500] if result else "",
-                execution_ms=execution_ms,
-                success=True,
-            )
+            # Log tool call (non-fatal)
+            try:
+                self.logger.log_tool_call(
+                    request_id="",
+                    tool_name=func_name,
+                    tool_arguments=arguments,
+                    tool_result=result[:500] if result else "",
+                    execution_ms=execution_ms,
+                    success=True,
+                )
+            except Exception as log_err:
+                logger.debug(f"Logging failed (non-fatal): {log_err}")
             
             return result
             
@@ -277,15 +286,18 @@ class CodeRAGAgent:
             error_msg = f"Tool error ({func_name}): {str(e)}"
             logger.error(error_msg)
             
-            self.logger.log_tool_call(
-                request_id="",
-                tool_name=func_name,
-                tool_arguments=arguments,
-                tool_result="",
-                execution_ms=execution_ms,
-                success=False,
-                error_message=str(e),
-            )
+            try:
+                self.logger.log_tool_call(
+                    request_id="",
+                    tool_name=func_name,
+                    tool_arguments=arguments,
+                    tool_result="",
+                    execution_ms=execution_ms,
+                    success=False,
+                    error_message=str(e),
+                )
+            except Exception as log_err:
+                logger.debug(f"Logging failed (non-fatal): {log_err}")
             
             return json.dumps({"error": error_msg})
     
