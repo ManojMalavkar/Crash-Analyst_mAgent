@@ -1,0 +1,25 @@
+{"question": "how to create animation of deformation results", "keywords": ["Animation", "Create", "Deformation"], "reference_answer": "Animation > Create > Deformation", "category": "animation"}
+{"question": "save animation as video file", "keywords": ["Animation", "Save", "Video", "AVI"], "reference_answer": "Animation > Save > Video (AVI/MP4)", "category": "animation"}
+{"question": "change contour plot to von mises stress", "keywords": ["Contour", "Stress", "VonMises", "Results"], "reference_answer": "Results > Contour > Scalar > vonMises", "category": "results"}
+{"question": "display maximum value on contour", "keywords": ["Contour", "Max", "Annotation", "Label"], "reference_answer": "Results > Contour > Options > Show Max/Min Labels", "category": "results"}
+{"question": "create section cut through model", "keywords": ["Section", "Cut", "Plane", "Create"], "reference_answer": "Tools > Section Cut > Define Plane > Apply", "category": "tools"}
+{"question": "measure distance between two nodes", "keywords": ["Measure", "Distance", "Node", "Between"], "reference_answer": "Tools > Measure > Distance > Node to Node", "category": "tools"}
+{"question": "export image of current view", "keywords": ["Image", "Export", "Save", "Screenshot"], "reference_answer": "File > Save Image > PNG/JPEG", "category": "io"}
+{"question": "open d3plot result file", "keywords": ["Open", "Read", "d3plot", "File", "Model"], "reference_answer": "File > Open > d3plot", "category": "io"}
+{"question": "create XY plot of node displacement vs time", "keywords": ["Plot", "XY", "Curve", "Displacement", "Time"], "reference_answer": "2D Plot > Create > Node Result > Displacement vs Time", "category": "plot"}
+{"question": "add curve to existing plot", "keywords": ["Curve", "Add", "Plot", "2D"], "reference_answer": "2D Plot > Add Curve > Select Data", "category": "plot"}
+{"question": "change curve color to red", "keywords": ["Curve", "Color", "Change", "Red"], "reference_answer": "2D Plot > Curve Properties > Color > Red", "category": "plot"}
+{"question": "set legend title for plot", "keywords": ["Legend", "Title", "Plot", "Label"], "reference_answer": "2D Plot > Options > Legend > Title", "category": "plot"}
+{"question": "hide parts from display", "keywords": ["Hide", "Part", "Visibility", "Display"], "reference_answer": "View > Parts > Hide Selected", "category": "display"}
+{"question": "set transparency on parts", "keywords": ["Transparency", "Part", "Alpha", "Opacity"], "reference_answer": "View > Parts > Properties > Transparency", "category": "display"}
+{"question": "reset view to isometric", "keywords": ["View", "Isometric", "Reset", "Orientation"], "reference_answer": "View > Standard Views > Isometric", "category": "display"}
+{"question": "fit model to screen", "keywords": ["Fit", "View", "All", "Zoom"], "reference_answer": "View > Fit All", "category": "display"}
+{"question": "select timestep for results", "keywords": ["Timestep", "State", "Time", "Select"], "reference_answer": "State > Select Timestep > Enter Value", "category": "results"}
+{"question": "show deformed shape with scale factor", "keywords": ["Deformed", "Shape", "Scale", "Factor", "Displacement"], "reference_answer": "Results > Deformed > Scale Factor > Apply", "category": "results"}
+{"question": "compare results of two models side by side", "keywords": ["Compare", "Model", "Side", "Window", "Sync"], "reference_answer": "Window > Split > Synchronize Views", "category": "compare"}
+{"question": "create report with screenshots", "keywords": ["Report", "Create", "Image", "Page"], "reference_answer": "Tools > Report > New > Add Page > Capture View", "category": "report"}
+{"question": "extract force from cross section", "keywords": ["Force", "Section", "Extract", "Cross"], "reference_answer": "Tools > Section Forces > Define Section > Extract", "category": "tools"}
+{"question": "filter elements by material", "keywords": ["Filter", "Element", "Material", "Select"], "reference_answer": "Select > By Material > Choose Material ID", "category": "selection"}
+{"question": "select nodes in box region", "keywords": ["Select", "Node", "Box", "Region"], "reference_answer": "Select > Box > Nodes > Draw Box", "category": "selection"}
+{"question": "show element numbering on screen", "keywords": ["Element", "Number", "ID", "Label", "Show"], "reference_answer": "View > Labels > Element IDs > On", "category": "display"}
+{"question": "calculate energy balance", "keywords": ["Energy", "Balance", "Total", "Kinetic", "Internal"], "reference_answer": "Results > Global > Energy > Plot Balance", "category": "results"}

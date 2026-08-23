@@ -44,6 +44,7 @@ logs/
 *.log
 *.jsonl
 !knowledge-base/*.jsonl
+!evaluation/*.jsonl
 
 # OS files
 .DS_Store
@@ -72,6 +73,7 @@ slurm-*.out
 reports/*.html
 reports/*.pdf
 !reports/.gitkeep
+interview_preparation/
 
 # Docker
 .docker/
