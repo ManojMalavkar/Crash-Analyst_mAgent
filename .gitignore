@@ -73,7 +73,6 @@ slurm-*.out
 reports/*.html
 reports/*.pdf
 !reports/.gitkeep
-interview_preparation/
 
 # Docker
 .docker/
