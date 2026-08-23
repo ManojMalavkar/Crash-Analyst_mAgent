@@ -44,7 +44,7 @@ logs/
 *.log
 *.jsonl
 !knowledge-base/*.jsonl
-
+!evaluation/*.jsonl
 
 # OS files
 .DS_Store
