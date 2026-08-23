@@ -1,0 +1,230 @@
+{
+  "timestamp": "2026-08-23T23:46:55.484688",
+  "eval_file": ".\\evaluation\\tests_session.jsonl",
+  "collection": "meta_session_commands",
+  "embedding_model": "BAAI/bge-small-en-v1.5",
+  "num_tests": 25,
+  "summary": {
+    "avg_mrr": 0.5566,
+    "avg_ndcg": 0.5714,
+    "avg_keyword_coverage": 71.0,
+    "missed_count": 0
+  },
+  "per_category": {
+    "animation": {
+      "count": 2,
+      "avg_mrr": 0.7708333333333333
+    },
+    "results": {
+      "count": 5,
+      "avg_mrr": 0.5704166666666667
+    },
+    "tools": {
+      "count": 3,
+      "avg_mrr": 0.8333333333333334
+    },
+    "io": {
+      "count": 2,
+      "avg_mrr": 0.6125
+    },
+    "plot": {
+      "count": 4,
+      "avg_mrr": 0.5076388888888889
+    },
+    "display": {
+      "count": 5,
+      "avg_mrr": 0.40800000000000003
+    },
+    "compare": {
+      "count": 1,
+      "avg_mrr": 0.1
+    },
+    "report": {
+      "count": 1,
+      "avg_mrr": 0.5
+    },
+    "selection": {
+      "count": 2,
+      "avg_mrr": 0.5625
+    }
+  },
+  "missed_queries": [],
+  "notes": "baseline after rebuilt session vector db",
+  "per_test": [
+    {
+      "question": "how to create animation of deformation results",
+      "category": "animation",
+      "mrr": 0.6667,
+      "ndcg": 0.7501,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "save animation as video file",
+      "category": "animation",
+      "mrr": 0.875,
+      "ndcg": 0.8535,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "change contour plot to von mises stress",
+      "category": "results",
+      "mrr": 0.2812,
+      "ndcg": 0.3289,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "display maximum value on contour",
+      "category": "results",
+      "mrr": 0.5833,
+      "ndcg": 0.6109,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "create section cut through model",
+      "category": "tools",
+      "mrr": 0.75,
+      "ndcg": 0.6642,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "measure distance between two nodes",
+      "category": "tools",
+      "mrr": 0.75,
+      "ndcg": 0.75,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "export image of current view",
+      "category": "io",
+      "mrr": 0.625,
+      "ndcg": 0.6577,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "open d3plot result file",
+      "category": "io",
+      "mrr": 0.6,
+      "ndcg": 0.5224,
+      "keyword_coverage": 60.0
+    },
+    {
+      "question": "create XY plot of node displacement vs time",
+      "category": "plot",
+      "mrr": 0.6,
+      "ndcg": 0.6311,
+      "keyword_coverage": 80.0
+    },
+    {
+      "question": "add curve to existing plot",
+      "category": "plot",
+      "mrr": 0.4028,
+      "ndcg": 0.5059,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "change curve color to red",
+      "category": "plot",
+      "mrr": 0.4028,
+      "ndcg": 0.4242,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "set legend title for plot",
+      "category": "plot",
+      "mrr": 0.625,
+      "ndcg": 0.5937,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "hide parts from display",
+      "category": "display",
+      "mrr": 0.525,
+      "ndcg": 0.5239,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "set transparency on parts",
+      "category": "display",
+      "mrr": 0.125,
+      "ndcg": 0.141,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "reset view to isometric",
+      "category": "display",
+      "mrr": 0.5,
+      "ndcg": 0.4597,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "fit model to screen",
+      "category": "display",
+      "mrr": 0.5833,
+      "ndcg": 0.6432,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "select timestep for results",
+      "category": "results",
+      "mrr": 0.6875,
+      "ndcg": 0.7803,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "show deformed shape with scale factor",
+      "category": "results",
+      "mrr": 0.5,
+      "ndcg": 0.5022,
+      "keyword_coverage": 60.0
+    },
+    {
+      "question": "compare results of two models side by side",
+      "category": "compare",
+      "mrr": 0.1,
+      "ndcg": 0.1762,
+      "keyword_coverage": 40.0
+    },
+    {
+      "question": "create report with screenshots",
+      "category": "report",
+      "mrr": 0.5,
+      "ndcg": 0.4516,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "extract force from cross section",
+      "category": "tools",
+      "mrr": 1.0,
+      "ndcg": 0.9599,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "filter elements by material",
+      "category": "selection",
+      "mrr": 0.875,
+      "ndcg": 0.8996,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "select nodes in box region",
+      "category": "selection",
+      "mrr": 0.25,
+      "ndcg": 0.25,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "show element numbering on screen",
+      "category": "display",
+      "mrr": 0.3067,
+      "ndcg": 0.4038,
+      "keyword_coverage": 80.0
+    },
+    {
+      "question": "calculate energy balance",
+      "category": "results",
+      "mrr": 0.8,
+      "ndcg": 0.8,
+      "keyword_coverage": 80.0
+    }
+  ]
+}

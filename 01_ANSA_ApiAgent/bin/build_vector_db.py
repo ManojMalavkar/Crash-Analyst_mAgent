@@ -184,16 +184,20 @@ class VectorStoreBuilder:
     def _build_embed_text(rec: dict) -> str:
         """Build the text to embed from a record dict."""
         parts = []
+        if rec.get("module"):
+            parts.append(f"Module: {rec['module']}")
         if rec.get("symbol"):
-            parts.append(rec["symbol"])
+            parts.append(f"Symbol: {rec['symbol']}")
+        if rec.get("type"):
+            parts.append(f"Type: {rec['type']}")
         if rec.get("signature"):
-            parts.append(rec["signature"])
+            parts.append(f"Signature: {rec['signature']}")
         if rec.get("description"):
-            parts.append(rec["description"])
+            parts.append(f"Description: {rec['description']}")
         if rec.get("docstring"):
-            parts.append(rec["docstring"][:500])
+            parts.append(f"Documentation: {rec['docstring'][:500]}")
         if rec.get("notes"):
-            parts.append(" ".join(rec["notes"][:3]))
+            parts.append(f"Notes: {' '.join(rec['notes'][:3])}")
         return "\n".join(parts) if parts else rec.get("symbol", "")
 
     def build(

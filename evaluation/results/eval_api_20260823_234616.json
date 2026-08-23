@@ -1,0 +1,845 @@
+{
+  "timestamp": "2026-08-23T23:46:16.244351",
+  "eval_file": ".\\evaluation\\tests_api.jsonl",
+  "collection": "api",
+  "embedding_model": "BAAI/bge-small-en-v1.5",
+  "num_tests": 100,
+  "summary": {
+    "avg_mrr": 0.477,
+    "avg_ndcg": 0.5034,
+    "avg_keyword_coverage": 63.0,
+    "missed_count": 4
+  },
+  "per_category": {
+    "ansa_calc": {
+      "count": 3,
+      "avg_mrr": 0.5
+    },
+    "ansa_entity": {
+      "count": 8,
+      "avg_mrr": 0.3932291666666667
+    },
+    "ansa_mesh": {
+      "count": 8,
+      "avg_mrr": 0.48854166666666665
+    },
+    "ansa_quality": {
+      "count": 3,
+      "avg_mrr": 0.3267195767195767
+    },
+    "ansa_connections": {
+      "count": 4,
+      "avg_mrr": 0.6041666666666666
+    },
+    "ansa_io": {
+      "count": 4,
+      "avg_mrr": 0.3653769841269841
+    },
+    "ansa_report": {
+      "count": 1,
+      "avg_mrr": 0.6666666666666666
+    },
+    "ansa_morph": {
+      "count": 3,
+      "avg_mrr": 0.5750000000000001
+    },
+    "ansa_automation": {
+      "count": 1,
+      "avg_mrr": 0.8333333333333334
+    },
+    "ansa_dm": {
+      "count": 1,
+      "avg_mrr": 0.3333333333333333
+    },
+    "ansa_vr": {
+      "count": 1,
+      "avg_mrr": 0.6666666666666666
+    },
+    "ansa_kinetics": {
+      "count": 1,
+      "avg_mrr": 1.0
+    },
+    "ansa_ui": {
+      "count": 1,
+      "avg_mrr": 0.5
+    },
+    "ansa_loads": {
+      "count": 5,
+      "avg_mrr": 0.5013888888888889
+    },
+    "ansa_transform": {
+      "count": 3,
+      "avg_mrr": 0.48412698412698413
+    },
+    "ansa_material": {
+      "count": 3,
+      "avg_mrr": 0.49384920634920637
+    },
+    "meta_results": {
+      "count": 10,
+      "avg_mrr": 0.3283333333333333
+    },
+    "meta_plot": {
+      "count": 9,
+      "avg_mrr": 0.6310185185185185
+    },
+    "meta_io": {
+      "count": 5,
+      "avg_mrr": 0.40049999999999997
+    },
+    "meta_post": {
+      "count": 8,
+      "avg_mrr": 0.3836805555555556
+    },
+    "meta_entity": {
+      "count": 8,
+      "avg_mrr": 0.4806795634920635
+    },
+    "meta_ui": {
+      "count": 10,
+      "avg_mrr": 0.5239880952380952
+    }
+  },
+  "missed_queries": [
+    {
+      "question": "set mesh parameters for element size",
+      "keywords": [
+        "ansa.mesh",
+        "SetMeshParams",
+        "MeshParams"
+      ],
+      "category": "ansa_mesh"
+    },
+    {
+      "question": "delete duplicate nodes with tolerance",
+      "keywords": [
+        "MergeNodes",
+        "ansa.base",
+        "Merge"
+      ],
+      "category": "ansa_entity"
+    },
+    {
+      "question": "create animation of deformation",
+      "keywords": [
+        "meta.visuals",
+        "Animation",
+        "Animate"
+      ],
+      "category": "meta_post"
+    },
+    {
+      "question": "get number of timesteps in result",
+      "keywords": [
+        "meta.models",
+        "Timestep",
+        "Count",
+        "States"
+      ],
+      "category": "meta_entity"
+    }
+  ],
+  "notes": "baseline after rebuilt api vector db",
+  "per_test": [
+    {
+      "question": "how to check if two volumes intersect",
+      "category": "ansa_calc",
+      "mrr": 0.5,
+      "ndcg": 0.5,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "collect all entities of a certain type",
+      "category": "ansa_entity",
+      "mrr": 0.5,
+      "ndcg": 0.4507,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "get entity by ID number",
+      "category": "ansa_entity",
+      "mrr": 0.5556,
+      "ndcg": 0.5898,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "create shell mesh on a part",
+      "category": "ansa_mesh",
+      "mrr": 0.6667,
+      "ndcg": 0.661,
+      "keyword_coverage": 66.7
+    },
+    {
+      "question": "set mesh parameters for element size",
+      "category": "ansa_mesh",
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "keyword_coverage": 0.0
+    },
+    {
+      "question": "check element quality criteria",
+      "category": "ansa_quality",
+      "mrr": 0.4444,
+      "ndcg": 0.539,
+      "keyword_coverage": 66.7
+    },
+    {
+      "question": "delete duplicate nodes with tolerance",
+      "category": "ansa_entity",
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "keyword_coverage": 0.0
+    },
+    {
+      "question": "create spot weld connections",
+      "category": "ansa_connections",
+      "mrr": 0.6667,
+      "ndcg": 0.626,
+      "keyword_coverage": 66.7
+    },
+    {
+      "question": "export model to LS-DYNA keyword format",
+      "category": "ansa_io",
+      "mrr": 0.381,
+      "ndcg": 0.4577,
+      "keyword_coverage": 66.7
+    },
+    {
+      "question": "read nastran bulk data file",
+      "category": "ansa_io",
+      "mrr": 0.3333,
+      "ndcg": 0.3333,
+      "keyword_coverage": 33.3
+    },
+    {
+      "question": "create report with images",
+      "category": "ansa_report",
+      "mrr": 0.6667,
+      "ndcg": 0.6378,
+      "keyword_coverage": 66.7
+    },
+    {
+      "question": "how to morph mesh geometry",
+      "category": "ansa_morph",
+      "mrr": 0.6,
+      "ndcg": 0.6768,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "run batch meshing on multiple parts",
+      "category": "ansa_mesh",
+      "mrr": 0.6667,
+      "ndcg": 0.6667,
+      "keyword_coverage": 66.7
+    },
+    {
+      "question": "run SPDRM process automation",
+      "category": "ansa_automation",
+      "mrr": 0.8333,
+      "ndcg": 0.8646,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "use data management to check in file",
+      "category": "ansa_dm",
+      "mrr": 0.3333,
+      "ndcg": 0.2522,
+      "keyword_coverage": 33.3
+    },
+    {
+      "question": "create VR visualization",
+      "category": "ansa_vr",
+      "mrr": 0.6667,
+      "ndcg": 0.6299,
+      "keyword_coverage": 66.7
+    },
+    {
+      "question": "access kinetics simulation setup",
+      "category": "ansa_kinetics",
+      "mrr": 1.0,
+      "ndcg": 0.9722,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "use betascript to create toolbar button",
+      "category": "ansa_ui",
+      "mrr": 0.5,
+      "ndcg": 0.611,
+      "keyword_coverage": 66.7
+    },
+    {
+      "question": "set entity property card value",
+      "category": "ansa_entity",
+      "mrr": 0.5,
+      "ndcg": 0.5503,
+      "keyword_coverage": 66.7
+    },
+    {
+      "question": "get entity card field values",
+      "category": "ansa_entity",
+      "mrr": 0.6667,
+      "ndcg": 0.6667,
+      "keyword_coverage": 66.7
+    },
+    {
+      "question": "create new property for parts",
+      "category": "ansa_entity",
+      "mrr": 0.1111,
+      "ndcg": 0.1792,
+      "keyword_coverage": 33.3
+    },
+    {
+      "question": "apply boundary condition SPC to nodes",
+      "category": "ansa_loads",
+      "mrr": 0.3333,
+      "ndcg": 0.3777,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "create a node set from selection",
+      "category": "ansa_entity",
+      "mrr": 0.75,
+      "ndcg": 0.7254,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "find entities by property name",
+      "category": "ansa_entity",
+      "mrr": 0.0625,
+      "ndcg": 0.1171,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "translate entities in x direction",
+      "category": "ansa_transform",
+      "mrr": 0.75,
+      "ndcg": 0.6454,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "rotate entities around axis",
+      "category": "ansa_transform",
+      "mrr": 0.4167,
+      "ndcg": 0.4789,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "mirror entities about a plane",
+      "category": "ansa_transform",
+      "mrr": 0.2857,
+      "ndcg": 0.3305,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "create contact between two part sets",
+      "category": "ansa_connections",
+      "mrr": 0.75,
+      "ndcg": 0.6646,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "check for penetrations in contact",
+      "category": "ansa_connections",
+      "mrr": 0.5,
+      "ndcg": 0.4963,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "create adhesive bond connection",
+      "category": "ansa_connections",
+      "mrr": 0.5,
+      "ndcg": 0.4668,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "import CAD geometry IGES file",
+      "category": "ansa_io",
+      "mrr": 0.6222,
+      "ndcg": 0.7934,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "export model as Abaqus input",
+      "category": "ansa_io",
+      "mrr": 0.125,
+      "ndcg": 0.192,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "create tetra solid mesh on volume",
+      "category": "ansa_mesh",
+      "mrr": 0.675,
+      "ndcg": 0.7761,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "refine mesh in local area",
+      "category": "ansa_mesh",
+      "mrr": 0.275,
+      "ndcg": 0.3141,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "split shell elements at line",
+      "category": "ansa_mesh",
+      "mrr": 0.625,
+      "ndcg": 0.601,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "create hexa mesh using mapped meshing",
+      "category": "ansa_mesh",
+      "mrr": 0.375,
+      "ndcg": 0.4265,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "fix mesh quality by element improvement",
+      "category": "ansa_mesh",
+      "mrr": 0.625,
+      "ndcg": 0.6558,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "define material MAT_024 properties",
+      "category": "ansa_material",
+      "mrr": 0.5625,
+      "ndcg": 0.6077,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "assign material to part property",
+      "category": "ansa_material",
+      "mrr": 0.369,
+      "ndcg": 0.456,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "define section shell thickness",
+      "category": "ansa_material",
+      "mrr": 0.55,
+      "ndcg": 0.596,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "apply force load on nodes",
+      "category": "ansa_loads",
+      "mrr": 0.5278,
+      "ndcg": 0.5252,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "define load curve for time history",
+      "category": "ansa_loads",
+      "mrr": 0.875,
+      "ndcg": 0.9004,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "create initial velocity on part",
+      "category": "ansa_loads",
+      "mrr": 0.2708,
+      "ndcg": 0.4063,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "define rigid body constraint",
+      "category": "ansa_loads",
+      "mrr": 0.5,
+      "ndcg": 0.4668,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "check model for free edges",
+      "category": "ansa_quality",
+      "mrr": 0.5,
+      "ndcg": 0.5394,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "find and fix T-connections in mesh",
+      "category": "ansa_quality",
+      "mrr": 0.0357,
+      "ndcg": 0.0995,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "calculate mesh statistics volume area",
+      "category": "ansa_calc",
+      "mrr": 0.5,
+      "ndcg": 0.4913,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "measure distance between two nodes",
+      "category": "ansa_calc",
+      "mrr": 0.5,
+      "ndcg": 0.5,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "create morph box around region",
+      "category": "ansa_morph",
+      "mrr": 0.5625,
+      "ndcg": 0.5881,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "define morph design variable for optimization",
+      "category": "ansa_morph",
+      "mrr": 0.5625,
+      "ndcg": 0.5514,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "plot contour of stress results in meta",
+      "category": "meta_results",
+      "mrr": 0.1667,
+      "ndcg": 0.2512,
+      "keyword_coverage": 33.3
+    },
+    {
+      "question": "create 2D XY plot of force vs time",
+      "category": "meta_plot",
+      "mrr": 0.7143,
+      "ndcg": 0.7276,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "change color of curves in meta",
+      "category": "meta_plot",
+      "mrr": 0.8,
+      "ndcg": 0.8262,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "read d3plot result file in meta",
+      "category": "meta_io",
+      "mrr": 0.175,
+      "ndcg": 0.2544,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "create section cut through model",
+      "category": "meta_post",
+      "mrr": 0.7778,
+      "ndcg": 0.8698,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "get all nodes from result model",
+      "category": "meta_entity",
+      "mrr": 0.5,
+      "ndcg": 0.5,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "create animation of deformation",
+      "category": "meta_post",
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "keyword_coverage": 0.0
+    },
+    {
+      "question": "manage windows and viewports in meta",
+      "category": "meta_ui",
+      "mrr": 1.0,
+      "ndcg": 0.9022,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "extract element results at specific time",
+      "category": "meta_results",
+      "mrr": 0.5,
+      "ndcg": 0.5,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "add annotation text to viewport",
+      "category": "meta_ui",
+      "mrr": 0.4667,
+      "ndcg": 0.6287,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "define coordinate system",
+      "category": "meta_post",
+      "mrr": 0.5,
+      "ndcg": 0.5,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "work with materials in meta",
+      "category": "meta_entity",
+      "mrr": 0.5111,
+      "ndcg": 0.6735,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "set contour range limits min max",
+      "category": "meta_results",
+      "mrr": 0.6,
+      "ndcg": 0.5614,
+      "keyword_coverage": 60.0
+    },
+    {
+      "question": "get maximum stress value from results",
+      "category": "meta_results",
+      "mrr": 0.5,
+      "ndcg": 0.4643,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "plot plastic strain contour on elements",
+      "category": "meta_results",
+      "mrr": 0.05,
+      "ndcg": 0.1036,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "extract nodal displacement time history",
+      "category": "meta_results",
+      "mrr": 0.1667,
+      "ndcg": 0.2478,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "calculate energy balance from results",
+      "category": "meta_results",
+      "mrr": 0.25,
+      "ndcg": 0.2079,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "get acceleration at node over time",
+      "category": "meta_results",
+      "mrr": 0.425,
+      "ndcg": 0.4838,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "plot velocity vector field on model",
+      "category": "meta_results",
+      "mrr": 0.375,
+      "ndcg": 0.3818,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "get wall force from rigid wall",
+      "category": "meta_results",
+      "mrr": 0.25,
+      "ndcg": 0.25,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "add second curve to existing 2D plot",
+      "category": "meta_plot",
+      "mrr": 0.6042,
+      "ndcg": 0.6782,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "set axis title and labels for plot",
+      "category": "meta_plot",
+      "mrr": 0.8,
+      "ndcg": 0.8162,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "export plot as image PNG file",
+      "category": "meta_plot",
+      "mrr": 0.6,
+      "ndcg": 0.5092,
+      "keyword_coverage": 60.0
+    },
+    {
+      "question": "set curve line style to dashed",
+      "category": "meta_plot",
+      "mrr": 0.55,
+      "ndcg": 0.6198,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "set curve line thickness and width",
+      "category": "meta_plot",
+      "mrr": 0.7857,
+      "ndcg": 0.8159,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "create legend for multiple curves",
+      "category": "meta_plot",
+      "mrr": 0.125,
+      "ndcg": 0.1982,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "filter and crop curve data by time range",
+      "category": "meta_plot",
+      "mrr": 0.7,
+      "ndcg": 0.7161,
+      "keyword_coverage": 80.0
+    },
+    {
+      "question": "read binout file in meta",
+      "category": "meta_io",
+      "mrr": 0.25,
+      "ndcg": 0.2275,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "open multiple result files for comparison",
+      "category": "meta_io",
+      "mrr": 0.5,
+      "ndcg": 0.467,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "export animation as video AVI",
+      "category": "meta_io",
+      "mrr": 0.515,
+      "ndcg": 0.6313,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "save meta session as file",
+      "category": "meta_io",
+      "mrr": 0.5625,
+      "ndcg": 0.6557,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "create deformed shape visualization",
+      "category": "meta_post",
+      "mrr": 0.25,
+      "ndcg": 0.2411,
+      "keyword_coverage": 25.0
+    },
+    {
+      "question": "create section force plot at cross section",
+      "category": "meta_post",
+      "mrr": 0.3333,
+      "ndcg": 0.4053,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "measure intrusion distance between nodes",
+      "category": "meta_post",
+      "mrr": 0.375,
+      "ndcg": 0.405,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "create iso-surface at specific value",
+      "category": "meta_post",
+      "mrr": 0.3333,
+      "ndcg": 0.4067,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "calculate contact force between parts",
+      "category": "meta_post",
+      "mrr": 0.5,
+      "ndcg": 0.4568,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "show part visibility toggle on off",
+      "category": "meta_ui",
+      "mrr": 0.525,
+      "ndcg": 0.5722,
+      "keyword_coverage": 80.0
+    },
+    {
+      "question": "set transparency opacity on parts",
+      "category": "meta_ui",
+      "mrr": 0.3333,
+      "ndcg": 0.3689,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "set view orientation to front side top",
+      "category": "meta_ui",
+      "mrr": 0.75,
+      "ndcg": 0.7269,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "zoom fit all model in viewport",
+      "category": "meta_ui",
+      "mrr": 0.5,
+      "ndcg": 0.4745,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "split window for side by side comparison",
+      "category": "meta_ui",
+      "mrr": 0.4667,
+      "ndcg": 0.6145,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "add arrow annotation pointing to max stress",
+      "category": "meta_ui",
+      "mrr": 0.3482,
+      "ndcg": 0.4418,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "capture screenshot of current view",
+      "category": "meta_ui",
+      "mrr": 0.3,
+      "ndcg": 0.3184,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "select elements by material type",
+      "category": "meta_entity",
+      "mrr": 0.5,
+      "ndcg": 0.4693,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "get element connectivity node list",
+      "category": "meta_entity",
+      "mrr": 0.625,
+      "ndcg": 0.5945,
+      "keyword_coverage": 75.0
+    },
+    {
+      "question": "get node coordinates XYZ position",
+      "category": "meta_entity",
+      "mrr": 0.376,
+      "ndcg": 0.5305,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "find nearest node to given position",
+      "category": "meta_entity",
+      "mrr": 0.5,
+      "ndcg": 0.5,
+      "keyword_coverage": 50.0
+    },
+    {
+      "question": "get list of all parts in result model",
+      "category": "meta_entity",
+      "mrr": 0.8333,
+      "ndcg": 0.8904,
+      "keyword_coverage": 100.0
+    },
+    {
+      "question": "get number of timesteps in result",
+      "category": "meta_entity",
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "keyword_coverage": 0.0
+    },
+    {
+      "question": "create page layout for report in meta",
+      "category": "meta_ui",
+      "mrr": 0.55,
+      "ndcg": 0.5967,
+      "keyword_coverage": 75.0
+    }
+  ]
+}
