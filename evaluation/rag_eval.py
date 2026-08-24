@@ -362,8 +362,17 @@ def run_single_test(test_number: int, tests: list[TestQuestion], collection, mod
     print(f"\n{'='*80}\n")
 
 
-def run_all_tests(tests: list[TestQuestion], collection, model: SentenceTransformer, full: bool = False):
-    """Run evaluation for all tests and show summary."""
+def run_all_tests(
+    tests: list[TestQuestion],
+    collection,
+    model: SentenceTransformer,
+    full: bool = False,
+    eval_file: str = "",
+    collection_name: str = "",
+    model_name: str = "",
+    notes: str = "",
+):
+    """Run evaluation for all tests and show summary. Saves results to evaluation/results/."""
 
     print(f"\n{'='*80}")
     print(f"  Running evaluation: {len(tests)} tests")
@@ -437,7 +446,129 @@ def run_all_tests(tests: list[TestQuestion], collection, model: SentenceTransfor
         print(f"    Completeness : {avg_comp:.2f}/5")
         print(f"    Relevance    : {avg_rel:.2f}/5")
 
+    # Save results to disk
+    save_results(
+        eval_file=eval_file,
+        collection_name=collection_name,
+        model_name=model_name,
+        retrieval_results=retrieval_results,
+        answer_results=answer_results if answer_results else None,
+        notes=notes,
+    )
+
     print(f"\n{'='*80}\n")
+
+
+# =============================================================================
+# Result Storage
+# =============================================================================
+
+
+def save_results(
+    eval_file: str,
+    collection_name: str,
+    model_name: str,
+    retrieval_results: list,
+    answer_results: list = None,
+    notes: str = "",
+):
+    """Save evaluation results to JSON for tracking over iterations."""
+    from datetime import datetime
+
+    results_dir = Path(__file__).resolve().parent / "results"
+    results_dir.mkdir(exist_ok=True)
+
+    # Compute summary
+    avg_mrr = sum(r.mrr for _, r in retrieval_results) / len(retrieval_results)
+    avg_ndcg = sum(r.ndcg for _, r in retrieval_results) / len(retrieval_results)
+    avg_coverage = sum(r.keyword_coverage for _, r in retrieval_results) / len(retrieval_results)
+
+    # Per-category
+    categories = {}
+    for test, result in retrieval_results:
+        if test.category not in categories:
+            categories[test.category] = []
+        categories[test.category].append(result.mrr)
+
+    per_category = {
+        cat: {"count": len(scores), "avg_mrr": sum(scores) / len(scores)}
+        for cat, scores in categories.items()
+    }
+
+    # Missed queries
+    missed = [
+        {"question": test.question, "keywords": test.keywords, "category": test.category}
+        for test, result in retrieval_results if result.mrr == 0.0
+    ]
+
+    # Build record
+    record = {
+        "timestamp": datetime.now().isoformat(),
+        "eval_file": str(eval_file),
+        "collection": collection_name,
+        "embedding_model": model_name,
+        "num_tests": len(retrieval_results),
+        "summary": {
+            "avg_mrr": round(avg_mrr, 4),
+            "avg_ndcg": round(avg_ndcg, 4),
+            "avg_keyword_coverage": round(avg_coverage, 1),
+            "missed_count": len(missed),
+        },
+        "per_category": per_category,
+        "missed_queries": missed,
+        "notes": notes,
+    }
+
+    # Add answer eval if available
+    if answer_results:
+        avg_acc = sum(r.accuracy for _, r in answer_results) / len(answer_results)
+        avg_comp = sum(r.completeness for _, r in answer_results) / len(answer_results)
+        avg_rel = sum(r.relevance for _, r in answer_results) / len(answer_results)
+        record["answer_quality"] = {
+            "avg_accuracy": round(avg_acc, 2),
+            "avg_completeness": round(avg_comp, 2),
+            "avg_relevance": round(avg_rel, 2),
+        }
+
+    # Per-test detail
+    record["per_test"] = [
+        {
+            "question": test.question,
+            "category": test.category,
+            "mrr": round(result.mrr, 4),
+            "ndcg": round(result.ndcg, 4),
+            "keyword_coverage": round(result.keyword_coverage, 1),
+        }
+        for test, result in retrieval_results
+    ]
+
+    # Save as timestamped JSON
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"eval_{collection_name}_{timestamp}.json"
+    filepath = results_dir / filename
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=2, ensure_ascii=False)
+
+    print(f"\n  Results saved: {filepath}")
+
+    # Also append one-line summary to history log
+    history_file = results_dir / "history.jsonl"
+    summary_line = {
+        "timestamp": record["timestamp"],
+        "collection": collection_name,
+        "model": model_name,
+        "mrr": record["summary"]["avg_mrr"],
+        "ndcg": record["summary"]["avg_ndcg"],
+        "coverage": record["summary"]["avg_keyword_coverage"],
+        "missed": record["summary"]["missed_count"],
+        "notes": notes,
+    }
+    with open(history_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(summary_line) + "\n")
+
+    print(f"  History appended: {history_file}")
+    return filepath
 
 
 # =============================================================================
@@ -466,6 +597,10 @@ def main():
     parser.add_argument(
         "--compare-models", action="store_true",
         help="Compare embedding models (slow — rebuilds for each)"
+    )
+    parser.add_argument(
+        "--notes", default="",
+        help="Notes for this run (e.g. 'added signature to embed text')"
     )
     args = parser.parse_args()
 
@@ -508,8 +643,16 @@ def main():
     if args.test is not None:
         run_single_test(args.test, tests, collection, model, full=args.full)
     else:
-        run_all_tests(tests, collection, model, full=args.full)
+        run_all_tests(
+            tests, collection, model,
+            full=args.full,
+            eval_file=args.eval_file,
+            collection_name=collection.name,
+            model_name=model_name,
+            notes=args.notes,
+        )
 
 
 if __name__ == "__main__":
+    import argparse
     main()

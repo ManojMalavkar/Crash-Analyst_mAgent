@@ -182,19 +182,55 @@ class VectorStoreBuilder:
 
     @staticmethod
     def _build_embed_text(rec: dict) -> str:
-        """Build the text to embed from a record dict."""
+        """Build the text to embed from a record dict.
+
+        Prioritize the exact symbol name and the most discriminative API context so
+        semantic search can match precise ANSA/META call names instead of generic
+        words like "Create", "Check", or "Mesh".
+        """
         parts = []
-        if rec.get("symbol"):
-            parts.append(rec["symbol"])
-        if rec.get("signature"):
-            parts.append(rec["signature"])
-        if rec.get("description"):
-            parts.append(rec["description"])
-        if rec.get("docstring"):
-            parts.append(rec["docstring"][:500])
-        if rec.get("notes"):
-            parts.append(" ".join(rec["notes"][:3]))
-        return "\n".join(parts) if parts else rec.get("symbol", "")
+
+        symbol = rec.get("symbol") or ""
+        module = rec.get("module") or ""
+        api_type = rec.get("type") or ""
+        signature = rec.get("signature") or ""
+        description = rec.get("description") or ""
+        docstring = rec.get("docstring") or ""
+        notes = rec.get("notes") or []
+        software = rec.get("software") or ""
+
+        if module and symbol:
+            parts.append(f"API: {module}.{symbol}")
+        elif symbol:
+            parts.append(f"API: {symbol}")
+
+        if symbol:
+            parts.append(f"Symbol: {symbol}")
+        if module:
+            parts.append(f"Module: {module}")
+        if api_type:
+            parts.append(f"Type: {api_type}")
+        if software:
+            parts.append(f"Software: {software}")
+        if signature:
+            parts.append(f"Signature: {signature}")
+
+        text_fields = []
+        if description:
+            text_fields.append(description)
+        if docstring:
+            text_fields.append(docstring[:500])
+        if isinstance(notes, list):
+            notes_text = " ".join(str(n) for n in notes[:3])
+            if notes_text:
+                text_fields.append(f"Notes: {notes_text}")
+        elif notes:
+            text_fields.append(f"Notes: {notes}")
+
+        if text_fields:
+            parts.append("\n".join(text_fields))
+
+        return "\n".join(parts) if parts else symbol
 
     def build(
         self,

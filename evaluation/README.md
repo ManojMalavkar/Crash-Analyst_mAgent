@@ -9,11 +9,15 @@ Iterative evaluation framework for optimizing ANSA/META CodeRAG retrieval qualit
 ```
 evaluation/
 ├── README.md               ← This file (improvement flow guide)
-├── rag_eval.py             ← Main evaluator (retrieval + LLM-as-judge)
-├── embedding_eval.py       ← Embedding model comparison (standalone)
+├── rag_eval.py             ← Main evaluator (retrieval + LLM-as-judge + auto-save)
+├── embedding_eval.py       ← Embedding model comparison (standalone, one-time)
 ├── test_tools.py           ← Test individual RAG tools (debug)
-├── tests_api.jsonl         ← Ground truth: ANSA/META Python API (30 queries)
-└── tests_session.jsonl     ← Ground truth: META session commands (25 queries)
+├── tests_api.jsonl         ← Ground truth: ANSA/META Python API (100 queries)
+├── tests_session.jsonl     ← Ground truth: META session commands (25 queries)
+└── results/                ← Auto-saved evaluation results (git-ignored)
+    ├── eval_api_<timestamp>.json
+    ├── eval_meta_session_commands_<timestamp>.json
+    └── history.jsonl       ← Append-only summary log
 ```
 
 ---
@@ -292,9 +296,80 @@ python bin/kg_retriever.py
 
 ---
 
-## Tracking Results
+## Result Storage (Automatic)
 
-Keep a log of your experiments:
+Every `rag_eval.py` run **automatically saves** results to `evaluation/results/` (git-ignored):
+
+```
+evaluation/results/                           ← Auto-created, git-ignored
+├── eval_api_20250127_143022.json             ← Full detail per run
+├── eval_api_20250127_160515.json             ← Next iteration...
+├── eval_meta_session_commands_20250127.json   ← Session eval
+└── history.jsonl                              ← One-line summary per run
+```
+
+**What gets saved per run:**
+- Summary: avg MRR, nDCG, keyword coverage, missed count
+- Per-category breakdown
+- Missed queries (question + expected keywords + what was returned)
+- Per-test detail (MRR, nDCG, coverage for each question)
+- LLM judge scores (if `--full` was used)
+- Notes (from `--notes` flag)
+
+**Use `--notes` to tag each run:**
+
+```bash
+# Baseline
+python evaluation/rag_eval.py \
+    --eval-file evaluation/tests_api.jsonl \
+    --collection api \
+    --notes "baseline: bge-small, symbol+desc"
+
+# After tuning embed text
+python evaluation/rag_eval.py \
+    --eval-file evaluation/tests_api.jsonl \
+    --collection api \
+    --notes "added signature to embed text"
+```
+
+**Track progress via history.jsonl:**
+
+```bash
+cat evaluation/results/history.jsonl
+```
+
+```json
+{"timestamp": "2025-01-27T14:30:22", "collection": "api", "model": "BAAI/bge-small-en-v1.5", "mrr": 0.5823, "ndcg": 0.6012, "coverage": 72.3, "missed": 8, "notes": "baseline"}
+{"timestamp": "2025-01-27T16:05:15", "collection": "api", "model": "BAAI/bge-small-en-v1.5", "mrr": 0.6891, "ndcg": 0.7105, "coverage": 83.1, "missed": 5, "notes": "added signature"}
+```
+
+---
+
+## Running Both Databases (One Iteration)
+
+Run evaluation separately for each database in the same iteration:
+
+```bash
+# Run 1: API database (100 queries)
+python evaluation/rag_eval.py \
+    --eval-file evaluation/tests_api.jsonl \
+    --collection api \
+    --notes "iteration 1: baseline"
+
+# Run 2: Session commands database (25 queries)
+python evaluation/rag_eval.py \
+    --eval-file evaluation/tests_session.jsonl \
+    --collection meta_session_commands \
+    --notes "iteration 1: baseline"
+```
+
+Both results are saved independently and appear in `history.jsonl`.
+
+---
+
+## Tracking Results (Manual)
+
+Optional manual log for quick reference:
 
 | # | Variable Changed | Value | MRR | nDCG | Coverage | Notes |
 |---|-----------------|-------|-----|------|----------|-------|
