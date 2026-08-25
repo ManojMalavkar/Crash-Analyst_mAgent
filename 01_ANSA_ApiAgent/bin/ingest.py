@@ -272,6 +272,29 @@ class KnowledgeExtractor:
     # Python Parser
     # ------------------------------------------------------------------
 
+    def _module_from_path(self, file: Path) -> str:
+        """Derive the fully-qualified dotted module for a .py stub file.
+
+        e.g. .../pydev_meta/meta/spdrm/process.py -> "meta.spdrm.process"
+        so python-derived symbols match the fully-qualified HTML symbol ids
+        instead of creating duplicate, near-empty records (e.g. "windows.X"
+        vs "meta.windows.X").
+        """
+        parts = file.parts
+        lower_parts = [p.lower() for p in parts]
+        root_idx = None
+        for marker in ("meta", "ansa"):
+            if marker in lower_parts:
+                idx = len(lower_parts) - 1 - lower_parts[::-1].index(marker)
+                if root_idx is None or idx > root_idx:
+                    root_idx = idx
+        if root_idx is None:
+            return file.stem
+        module_parts = list(parts[root_idx:-1])
+        if file.stem != "__init__":
+            module_parts.append(file.stem)
+        return ".".join(module_parts) if module_parts else file.stem
+
     def process_python(self, file: Path):
         """Process Python source files (stubs with docstrings)."""
         try:
@@ -280,7 +303,7 @@ class KnowledgeExtractor:
         except Exception:
             return
 
-        module = file.stem
+        module = self._module_from_path(file)
         functions_found = []
         api_calls = set()
 
@@ -694,6 +717,45 @@ class KnowledgeExtractor:
             "EXAMPLE": rec.get("notes") or [],
         }
 
+    def _derive_missing_class_members(self):
+        """Fill in METHODS/ATTRIBUTES for classes that never got an explicit list.
+
+        Sphinx HTML documents each class method/attribute as its own sibling
+        dt[id] entry (e.g. "meta.windows.Window.activate"), not nested inside
+        the class's own <dd>. So HTML-derived classes need their members
+        reconstructed by matching direct dotted children, unlike the manual-text
+        format which already lists them under METHODS:/ATTRIBUTES:.
+        """
+        for symbol, rec in self.records.items():
+            if (rec.get("type") or "").lower() != "class":
+                continue
+            if rec.get("methods") and rec.get("attributes"):
+                continue
+
+            prefix = symbol + "."
+            depth = symbol.count(".") + 1
+            child_methods, child_attrs = [], []
+            for other_symbol, other_rec in self.records.items():
+                if not other_symbol.startswith(prefix) or other_symbol.count(".") != depth:
+                    continue
+                other_type = (other_rec.get("type") or "").lower()
+                if other_type == "attribute":
+                    child_attrs.append(other_symbol)
+                elif other_type in ("function", "method"):
+                    child_methods.append(other_symbol)
+
+            if not rec.get("methods") and child_methods:
+                rec["methods"] = sorted(child_methods)
+            if not rec.get("attributes") and child_attrs:
+                rec["attributes"] = [
+                    {
+                        "name": attr.rsplit(".", 1)[-1],
+                        "type": "",
+                        "description": self.records[attr].get("description") or "",
+                    }
+                    for attr in sorted(child_attrs)
+                ]
+
     def build_hierarchy(self) -> list:
         """Build the category-wise class -> nested-method export.
 
@@ -701,6 +763,8 @@ class KnowledgeExtractor:
         with each method embedded in full (not just its name). Methods already
         nested under a class are not duplicated as top-level entries.
         """
+        self._derive_missing_class_members()
+
         nested_method_symbols = set()
         for rec in self.records.values():
             if (rec.get("type") or "").lower() == "class":
