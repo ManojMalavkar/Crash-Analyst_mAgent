@@ -72,7 +72,7 @@ _HTML_NOISE_FILES = {
 _MANUAL_SECTION_HEADERS = [
     "NAME", "SYNOPSIS", "DESCRIPTION", "ARGUMENTS", "ATTRIBUTES",
     "METHODS", "EXCEPTIONS", "RETURN TYPE", "RETURN VALUE", "EXAMPLE",
-    "NOTES", "SEE ALSO",
+    "NOTES", "SEE ALSO", "DEPRECATED SINCE", "REPLACED BY",
 ]
 _MANUAL_BLOCK_SEP = re.compile(r'\n-{5,}\n')
 
@@ -143,11 +143,13 @@ class KnowledgeExtractor:
                 "type": None,
                 "deprecated": False,
                 "deprecated_target": None,
+                "deprecated_since": None,
                 "signature": None,
                 "description": None,
                 "docstring": None,
                 "parameters": [],
                 "returns": None,
+                "exceptions": [],
                 "attributes": [],
                 "methods": [],
                 "examples": [],
@@ -367,11 +369,11 @@ class KnowledgeExtractor:
         return m.group(1) if m else None
 
     def _parse_params_returns(self, dd) -> tuple:
-        """Parse a Sphinx `Parameters` / `Returns` field-list into structured data."""
-        parameters, returns = [], None
+        """Parse a Sphinx `Parameters` / `Returns` / `Raises` field-list into structured data."""
+        parameters, returns, exceptions = [], None, []
         field_list = dd.find("dl", class_="field-list")
         if not field_list:
-            return parameters, returns
+            return parameters, returns, exceptions
 
         for field_dt in field_list.find_all("dt", class_=re.compile(r"field-(odd|even)"), recursive=False):
             label = field_dt.get_text(strip=True).rstrip(":")
@@ -397,8 +399,16 @@ class KnowledgeExtractor:
                     "type": r_dt.get_text(strip=True) if r_dt else "",
                     "description": re.sub(r"\s+", " ", r_dd.get_text(" ", strip=True)) if r_dd else "",
                 }
+            elif label in ("Raises", "Exceptions"):
+                inner_dl = field_dd.find("dl") or field_dd
+                for e_dt in inner_dl.find_all("dt", recursive=False):
+                    e_dd = e_dt.find_next_sibling("dd")
+                    exceptions.append({
+                        "type": e_dt.get_text(strip=True),
+                        "description": re.sub(r"\s+", " ", e_dd.get_text(" ", strip=True)) if e_dd else "",
+                    })
 
-        return parameters, returns
+        return parameters, returns, exceptions
 
     def process_html(self, file: Path):
         """Process Sphinx HTML API reference pages."""
@@ -447,8 +457,9 @@ class KnowledgeExtractor:
             description = None
             docstring = None
             notes = []
-            parameters, returns = [], None
+            parameters, returns, exceptions = [], None, []
             deprecated_target = None
+            deprecated_since = None
 
             if dd:
                 first_p = dd.find("p")
@@ -464,10 +475,14 @@ class KnowledgeExtractor:
                 if len(full_text) > 30:
                     docstring = full_text
 
-                parameters, returns = self._parse_params_returns(dd)
+                parameters, returns, exceptions = self._parse_params_returns(dd)
 
                 depr_div = dd.find("div", class_=re.compile(r"deprecated"))
                 if depr_div:
+                    depr_text = depr_div.get_text(" ", strip=True)
+                    since_match = re.search(r"since version\s+([\w.]+)", depr_text, re.I)
+                    if since_match:
+                        deprecated_since = since_match.group(1)
                     depr_link = depr_div.find("a", href=re.compile("#"))
                     if depr_link and depr_link.get("href"):
                         deprecated_target = depr_link["href"].split("#")[-1]
@@ -491,6 +506,8 @@ class KnowledgeExtractor:
                 rec["parameters"] = parameters
             if returns and not rec["returns"]:
                 rec["returns"] = returns
+            if exceptions and not rec["exceptions"]:
+                rec["exceptions"] = exceptions
 
             # Deprecated detection
             if dd:
@@ -499,6 +516,8 @@ class KnowledgeExtractor:
                     rec["deprecated"] = True
                 if deprecated_target and not rec["deprecated_target"]:
                     rec["deprecated_target"] = deprecated_target
+                if deprecated_since and not rec["deprecated_since"]:
+                    rec["deprecated_since"] = deprecated_since
 
             rec["sources"].append(str(file))
             self.stats["html_records"] += 1
@@ -607,6 +626,22 @@ class KnowledgeExtractor:
                     "description": re.sub(r"\s+", " ", return_value),
                 }
 
+            exceptions_text = sections.get("EXCEPTIONS", "").strip()
+            if exceptions_text and not rec["exceptions"]:
+                rec["exceptions"] = [
+                    re.sub(r"\s+", " ", part).strip()
+                    for part in exceptions_text.split("\n\n") if part.strip()
+                ]
+
+            deprecated_since = sections.get("DEPRECATED SINCE", "").strip()
+            replaced_by = sections.get("REPLACED BY", "").strip()
+            if deprecated_since or replaced_by:
+                rec["deprecated"] = True
+                if deprecated_since and not rec["deprecated_since"]:
+                    rec["deprecated_since"] = deprecated_since
+                if replaced_by and not rec["deprecated_target"]:
+                    rec["deprecated_target"] = replaced_by
+
             if is_class:
                 attributes = self._parse_arg_list(sections.get("ATTRIBUTES", ""))
                 if attributes and not rec["attributes"]:
@@ -620,6 +655,65 @@ class KnowledgeExtractor:
 
             rec["sources"].append(str(file))
             self.stats["manual_records"] += 1
+
+    # ------------------------------------------------------------------
+    # Category-wise Hierarchy View (class -> nested methods)
+    # ------------------------------------------------------------------
+
+    def _method_view(self, rec: dict) -> dict:
+        """Category-wise view for a method/function record."""
+        returns = rec.get("returns") or {}
+        return {
+            "NAME": rec["symbol"],
+            "SYNOPSIS": rec.get("signature") or "",
+            "DESCRIPTION": rec.get("description") or "",
+            "DEPRECATED SINCE": rec.get("deprecated_since") or "",
+            "REPLACED BY": rec.get("deprecated_target") or "",
+            "ARGUMENTS": rec.get("parameters") or [],
+            "EXCEPTIONS": rec.get("exceptions") or [],
+            "RETURN TYPE": returns.get("type", ""),
+            "RETURN VALUE": returns.get("description", ""),
+            "EXAMPLE": rec.get("notes") or [],
+        }
+
+    def _class_view(self, rec: dict) -> dict:
+        """Category-wise view for a class record, with its methods nested inside."""
+        nested_methods = []
+        for method_symbol in rec.get("methods") or []:
+            method_rec = self.records.get(method_symbol)
+            nested_methods.append(
+                self._method_view(method_rec) if method_rec else {"NAME": method_symbol}
+            )
+        return {
+            "NAME": rec["symbol"],
+            "SYNOPSIS": rec.get("signature") or "",
+            "DESCRIPTION": rec.get("description") or "",
+            "ARGUMENTS": rec.get("parameters") or [],
+            "ATTRIBUTES": rec.get("attributes") or [],
+            "METHODS": nested_methods,
+            "EXAMPLE": rec.get("notes") or [],
+        }
+
+    def build_hierarchy(self) -> list:
+        """Build the category-wise class -> nested-method export.
+
+        Classes carry NAME/SYNOPSIS/DESCRIPTION/ARGUMENTS/ATTRIBUTES/METHODS/EXAMPLE,
+        with each method embedded in full (not just its name). Methods already
+        nested under a class are not duplicated as top-level entries.
+        """
+        nested_method_symbols = set()
+        for rec in self.records.values():
+            if (rec.get("type") or "").lower() == "class":
+                nested_method_symbols.update(rec.get("methods") or [])
+
+        hierarchy = []
+        for symbol, rec in self.records.items():
+            rec_type = (rec.get("type") or "").lower()
+            if rec_type == "class":
+                hierarchy.append(self._class_view(rec))
+            elif symbol not in nested_method_symbols:
+                hierarchy.append(self._method_view(rec))
+        return hierarchy
 
     # ------------------------------------------------------------------
     # Signature Second Pass
@@ -789,6 +883,13 @@ class KnowledgeExtractor:
             for source, target, rel in self.kg_edges:
                 fp.write(json.dumps({"source": source, "target": target, "relationship": rel}, ensure_ascii=False) + "\n")
 
+        # coderag_hierarchy.jsonl (category-wise class -> nested methods view)
+        hierarchy = self.build_hierarchy()
+        hierarchy_file = output_dir / "coderag_hierarchy.jsonl"
+        with open(hierarchy_file, "w", encoding="utf-8") as fp:
+            for entry in hierarchy:
+                fp.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
         # Manifest
         manifest = {
             "total_records": len(self.records),
@@ -796,6 +897,7 @@ class KnowledgeExtractor:
             "invalid_records": len(invalid),
             "deprecated_records": sum(1 for r in self.records.values() if r.get("deprecated")),
             "examples_count": len(self.examples),
+            "hierarchy_entries": len(hierarchy),
             "kg_nodes": len(self.kg_nodes),
             "kg_edges": len(self.kg_edges),
             "software": self.software,
@@ -803,6 +905,7 @@ class KnowledgeExtractor:
             "output_files": {
                 "documents": str(docs_file),
                 "examples": str(examples_file),
+                "hierarchy": str(hierarchy_file),
                 "kg_nodes": str(nodes_file),
                 "kg_edges": str(edges_file),
             },
