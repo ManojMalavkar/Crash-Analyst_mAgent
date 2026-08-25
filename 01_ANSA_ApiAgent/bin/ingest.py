@@ -67,6 +67,15 @@ _HTML_NOISE_FILES = {
     "py-modindex.html", "searchindex.js"
 }
 
+# BETA PYTHON development Manual plain-text dumps (NAME/SYNOPSIS/... blocks,
+# separated by a line of 5+ dashes)
+_MANUAL_SECTION_HEADERS = [
+    "NAME", "SYNOPSIS", "DESCRIPTION", "ARGUMENTS", "ATTRIBUTES",
+    "METHODS", "EXCEPTIONS", "RETURN TYPE", "RETURN VALUE", "EXAMPLE",
+    "NOTES", "SEE ALSO",
+]
+_MANUAL_BLOCK_SEP = re.compile(r'\n-{5,}\n')
+
 
 # =============================================================================
 # Signature Cleanup
@@ -115,6 +124,7 @@ class KnowledgeExtractor:
             "json_records": 0,
             "py_records": 0,
             "html_records": 0,
+            "manual_records": 0,
             "examples": 0,
         }
         self.kg_nodes = {}
@@ -138,6 +148,8 @@ class KnowledgeExtractor:
                 "docstring": None,
                 "parameters": [],
                 "returns": None,
+                "attributes": [],
+                "methods": [],
                 "examples": [],
                 "notes": [],
                 "sources": [],
@@ -492,6 +504,124 @@ class KnowledgeExtractor:
             self.stats["html_records"] += 1
 
     # ------------------------------------------------------------------
+    # Plain-Text Manual Parser (BETA PYTHON development Manual dumps)
+    # ------------------------------------------------------------------
+
+    def _split_manual_sections(self, block: str) -> dict:
+        """Split one NAME/SYNOPSIS/.../EXAMPLE block into a {header: content} dict."""
+        pattern = r'(?m)^(' + '|'.join(_MANUAL_SECTION_HEADERS) + r'):\s*$'
+        parts = re.split(pattern, block)
+        sections = {}
+        it = iter(parts[1:])
+        for header, content in zip(it, it):
+            sections[header.strip()] = content.strip("\n")
+        return sections
+
+    def _parse_arg_list(self, text: str) -> list:
+        """Parse a `* name : type` bulleted ARGUMENTS/ATTRIBUTES section."""
+        if not text.strip():
+            return []
+        items = []
+        for entry in re.split(r'(?m)^\*\s*', text):
+            entry = entry.strip()
+            if not entry:
+                continue
+            header, _, rest = entry.partition("\n")
+            name, _, type_ = header.partition(":")
+            items.append({
+                "name": name.strip(),
+                "type": type_.strip(),
+                "description": re.sub(r"\s+", " ", rest).strip(),
+            })
+        return items
+
+    def _parse_method_list(self, text: str) -> list:
+        """Parse a METHODS section into a flat list of dotted method names."""
+        return [line.strip() for line in text.splitlines() if line.strip()]
+
+    def process_manual_text(self, file: Path):
+        """Process plain-text 'BETA PYTHON development Manual' dumps.
+
+        Each record is a NAME/SYNOPSIS/DESCRIPTION/.../EXAMPLE block separated
+        by a line of dashes. Classes additionally carry ARGUMENTS (constructor),
+        ATTRIBUTES, and a METHODS list; methods/functions carry ARGUMENTS,
+        EXCEPTIONS, RETURN TYPE, and RETURN VALUE.
+        """
+        try:
+            content = file.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return
+
+        for raw_block in _MANUAL_BLOCK_SEP.split(content):
+            block = raw_block.strip()
+            if not block or "NAME:" not in block:
+                continue
+
+            title_line = block.split("\n", 1)[0]
+            is_class = "(class)" in title_line
+
+            sections = self._split_manual_sections(block)
+            name_field = sections.get("NAME", "").strip()
+            if not name_field:
+                continue
+
+            methods = self._parse_method_list(sections.get("METHODS", "")) if is_class else []
+
+            if is_class:
+                if "." in name_field:
+                    symbol = name_field
+                elif methods:
+                    # Class NAME: is often a short name; derive the fully-qualified
+                    # path from its own methods, e.g. meta.windows.Window.activate
+                    # -> meta.windows.Window
+                    symbol = ".".join(methods[0].split(".")[:-1])
+                else:
+                    symbol = name_field
+            else:
+                symbol = name_field
+
+            module = symbol.rsplit(".", 1)[0] if "." in symbol else None
+
+            rec = self.get_record(symbol, file=file)
+            rec["type"] = rec["type"] or ("class" if is_class else "function")
+            if module and not rec["module"]:
+                rec["module"] = module
+
+            signature = sections.get("SYNOPSIS", "").strip()
+            if signature and not rec["signature"]:
+                rec["signature"] = clean_signature(signature)
+
+            description = sections.get("DESCRIPTION", "").strip()
+            if description and not rec["description"]:
+                rec["description"] = re.sub(r"\s+", " ", description)
+
+            parameters = self._parse_arg_list(sections.get("ARGUMENTS", ""))
+            if parameters and not rec["parameters"]:
+                rec["parameters"] = parameters
+
+            return_type = sections.get("RETURN TYPE", "").strip()
+            return_value = sections.get("RETURN VALUE", "").strip()
+            if (return_type or return_value) and not rec["returns"]:
+                rec["returns"] = {
+                    "type": return_type,
+                    "description": re.sub(r"\s+", " ", return_value),
+                }
+
+            if is_class:
+                attributes = self._parse_arg_list(sections.get("ATTRIBUTES", ""))
+                if attributes and not rec["attributes"]:
+                    rec["attributes"] = attributes
+                if methods and not rec["methods"]:
+                    rec["methods"] = methods
+
+            example = sections.get("EXAMPLE", "").strip()
+            if example:
+                rec["notes"].append(example)
+
+            rec["sources"].append(str(file))
+            self.stats["manual_records"] += 1
+
+    # ------------------------------------------------------------------
     # Signature Second Pass
     # ------------------------------------------------------------------
 
@@ -604,6 +734,11 @@ class KnowledgeExtractor:
                     if (self.records[class_candidate].get("type") or "").lower() == "class":
                         self.add_edge(class_candidate, symbol, "HAS_METHOD")
 
+            # CLASS -> HAS_METHOD (from parsed manual-text METHODS list, most reliable)
+            for method_name in rec.get("methods") or []:
+                self.add_node(method_name, node_type="Unknown")
+                self.add_edge(symbol, method_name, "HAS_METHOD")
+
             # SEE_ALSO
             content_str = rec.get("docstring") or ""
             for target in re.findall(r'(?:ansa|meta)\.[A-Za-z0-9_.]+', content_str):
@@ -714,7 +849,7 @@ class KnowledgeExtractor:
             self.process_python(file)
 
         # 5. Process HTML
-        print("[5/6] Processing HTML files...")
+        print("[5/7] Processing HTML files...")
         html_files = [
             f for f in self.root.rglob("*.html")
             if not any(part in _HTML_NOISE_DIRS for part in f.parts)
@@ -723,8 +858,17 @@ class KnowledgeExtractor:
         for file in tqdm(html_files, desc="  HTML", unit="file"):
             self.process_html(file)
 
-        # 6. Signature second pass + write
-        print("[6/6] Finalizing...")
+        # 6. Process plain-text manual dumps
+        print("[6/7] Processing manual text files...")
+        txt_files = [
+            f for f in self.root.rglob("*.txt")
+            if not any(part in _HTML_NOISE_DIRS for part in f.parts)
+        ]
+        for file in tqdm(txt_files, desc="  Manual", unit="file"):
+            self.process_manual_text(file)
+
+        # 7. Signature second pass + write
+        print("[7/7] Finalizing...")
         filled = self._fill_missing_signatures()
         print(f"  Signature second pass: {filled} filled from docstrings")
 
@@ -743,6 +887,7 @@ class KnowledgeExtractor:
         print(f"  JSON records:       {manifest['json_records']:,}")
         print(f"  Python records:     {manifest['py_records']:,}")
         print(f"  HTML records:       {manifest['html_records']:,}")
+        print(f"  Manual records:     {manifest['manual_records']:,}")
         print(f"\n  Output: {out}")
         print()
 
