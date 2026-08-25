@@ -124,7 +124,7 @@ class KnowledgeExtractor:
     # Record Management
     # ------------------------------------------------------------------
 
-    def get_record(self, symbol: str) -> dict:
+    def get_record(self, symbol: str, file: Optional[Path] = None) -> dict:
         """Get or create a record for an API symbol."""
         if symbol not in self.records:
             self.records[symbol] = {
@@ -132,15 +132,34 @@ class KnowledgeExtractor:
                 "module": None,
                 "type": None,
                 "deprecated": False,
+                "deprecated_target": None,
                 "signature": None,
                 "description": None,
                 "docstring": None,
+                "parameters": [],
+                "returns": None,
                 "examples": [],
                 "notes": [],
                 "sources": [],
-                "software": self.software,
+                "software": self._infer_software(symbol, file),
             }
         return self.records[symbol]
+
+    def _infer_software(self, symbol: str, file: Optional[Path] = None) -> str:
+        """Infer ansa vs meta per-record instead of trusting a single global flag."""
+        if symbol.startswith("meta."):
+            return "meta"
+        if symbol.startswith("ansa."):
+            return "ansa"
+        if file:
+            parts = [p.lower() for p in file.parts]
+            is_meta = any("meta" in p for p in parts)
+            is_ansa = any("ansa" in p for p in parts)
+            if is_meta and not is_ansa:
+                return "meta"
+            if is_ansa and not is_meta:
+                return "ansa"
+        return self.software
 
     # ------------------------------------------------------------------
     # Step 1: Extract Archives
@@ -222,7 +241,7 @@ class KnowledgeExtractor:
             if not symbol:
                 continue
 
-            rec = self.get_record(symbol)
+            rec = self.get_record(symbol, file=file)
             item_type = item.get("type")
 
             if item_type == "deprecated":
@@ -256,7 +275,7 @@ class KnowledgeExtractor:
                 symbol = f"{module}.{node.name}"
                 functions_found.append(node.name)
 
-                rec = self.get_record(symbol)
+                rec = self.get_record(symbol, file=file)
                 rec["module"] = module
                 rec["type"] = rec["type"] or "function"
 
@@ -283,7 +302,7 @@ class KnowledgeExtractor:
 
             elif isinstance(node, ast.ClassDef):
                 symbol = f"{module}.{node.name}"
-                rec = self.get_record(symbol)
+                rec = self.get_record(symbol, file=file)
                 rec["module"] = module
                 rec["type"] = rec["type"] or "class"
 
@@ -327,6 +346,48 @@ class KnowledgeExtractor:
                     parts.append(s)
         return " ".join(filter(None, parts))
 
+    def _module_from_heading(self, soup) -> Optional[str]:
+        """Extract the dotted module path from the page's `Module x.y` heading."""
+        h1 = soup.find("h1")
+        if not h1:
+            return None
+        m = re.match(r"Module\s+([\w.]+)", h1.get_text(" ", strip=True))
+        return m.group(1) if m else None
+
+    def _parse_params_returns(self, dd) -> tuple:
+        """Parse a Sphinx `Parameters` / `Returns` field-list into structured data."""
+        parameters, returns = [], None
+        field_list = dd.find("dl", class_="field-list")
+        if not field_list:
+            return parameters, returns
+
+        for field_dt in field_list.find_all("dt", class_=re.compile(r"field-(odd|even)"), recursive=False):
+            label = field_dt.get_text(strip=True).rstrip(":")
+            field_dd = field_dt.find_next_sibling("dd")
+            if not field_dd:
+                continue
+
+            if label == "Parameters":
+                inner_dl = field_dd.find("dl") or field_dd
+                for p_dt in inner_dl.find_all("dt", recursive=False):
+                    name_tag = p_dt.find("strong")
+                    type_tag = p_dt.find("span", class_="classifier")
+                    p_dd = p_dt.find_next_sibling("dd")
+                    parameters.append({
+                        "name": name_tag.get_text(strip=True) if name_tag else p_dt.get_text(strip=True),
+                        "type": type_tag.get_text(strip=True) if type_tag else "",
+                        "description": re.sub(r"\s+", " ", p_dd.get_text(" ", strip=True)) if p_dd else "",
+                    })
+            elif label == "Returns":
+                r_dt = field_dd.find("dt")
+                r_dd = field_dd.find("dd")
+                returns = {
+                    "type": r_dt.get_text(strip=True) if r_dt else "",
+                    "description": re.sub(r"\s+", " ", r_dd.get_text(" ", strip=True)) if r_dd else "",
+                }
+
+        return parameters, returns
+
     def process_html(self, file: Path):
         """Process Sphinx HTML API reference pages."""
         if BeautifulSoup is None:
@@ -341,6 +402,8 @@ class KnowledgeExtractor:
             soup = BeautifulSoup(html, "html.parser")
         except Exception:
             return
+
+        page_module = self._module_from_heading(soup)
 
         for entry in soup.select("dt[id]"):
             symbol = entry.get("id")
@@ -372,6 +435,8 @@ class KnowledgeExtractor:
             description = None
             docstring = None
             notes = []
+            parameters, returns = [], None
+            deprecated_target = None
 
             if dd:
                 first_p = dd.find("p")
@@ -387,8 +452,19 @@ class KnowledgeExtractor:
                 if len(full_text) > 30:
                     docstring = full_text
 
+                parameters, returns = self._parse_params_returns(dd)
+
+                depr_div = dd.find("div", class_=re.compile(r"deprecated"))
+                if depr_div:
+                    depr_link = depr_div.find("a", href=re.compile("#"))
+                    if depr_link and depr_link.get("href"):
+                        deprecated_target = depr_link["href"].split("#")[-1]
+
             # Update record
-            rec = self.get_record(symbol)
+            module = page_module or (symbol.rsplit(".", 1)[0] if "." in symbol else None)
+            rec = self.get_record(symbol, file=file)
+            if module and not rec["module"]:
+                rec["module"] = module
             if rec_type:
                 rec["type"] = rec["type"] or rec_type
             if signature and not rec["signature"]:
@@ -399,12 +475,18 @@ class KnowledgeExtractor:
                 rec["docstring"] = docstring
             if notes:
                 rec["notes"].extend(notes)
+            if parameters and not rec["parameters"]:
+                rec["parameters"] = parameters
+            if returns and not rec["returns"]:
+                rec["returns"] = returns
 
             # Deprecated detection
             if dd:
                 depr_div = dd.find("div", class_=re.compile(r"deprecated"))
                 if depr_div or (description and re.search(r"^Deprecated", description, re.I)):
                     rec["deprecated"] = True
+                if deprecated_target and not rec["deprecated_target"]:
+                    rec["deprecated_target"] = deprecated_target
 
             rec["sources"].append(str(file))
             self.stats["html_records"] += 1
@@ -495,12 +577,15 @@ class KnowledgeExtractor:
 
             # DEPRECATED_BY
             if rec.get("deprecated"):
-                content_str = (rec.get("description") or "") + " " + (rec.get("docstring") or "")
-                repl = re.search(r':py:\w+:`([^`]+)`', content_str)
-                if not repl:
-                    repl = re.search(r'[Uu]se\s+`?([A-Za-z][A-Za-z0-9_.]{4,})`?', content_str)
-                if repl:
-                    replacement = repl.group(1).strip("`").strip()
+                replacement = rec.get("deprecated_target")
+                if not replacement:
+                    content_str = (rec.get("description") or "") + " " + (rec.get("docstring") or "")
+                    repl = re.search(r':py:\w+:`([^`]+)`', content_str)
+                    if not repl:
+                        repl = re.search(r'[Uu]se\s+`?([A-Za-z][A-Za-z0-9_.]{4,})`?', content_str)
+                    if repl:
+                        replacement = repl.group(1).strip("`").strip()
+                if replacement:
                     self.add_node(replacement, node_type="Unknown")
                     self.add_edge(symbol, replacement, "DEPRECATED_BY")
 
@@ -521,7 +606,7 @@ class KnowledgeExtractor:
 
             # SEE_ALSO
             content_str = rec.get("docstring") or ""
-            for target in re.findall(r'ansa\.[A-Za-z0-9_.]+', content_str):
+            for target in re.findall(r'(?:ansa|meta)\.[A-Za-z0-9_.]+', content_str):
                 if target != symbol:
                     self.add_node(target, node_type="Unknown")
                     self.add_edge(symbol, target, "SEE_ALSO")

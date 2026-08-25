@@ -23,6 +23,8 @@ pandas>=2.0.0                   # Data manipulation
 numpy>=1.24.0                   # Numerical computing
 pyyaml>=6.0                     # YAML parsing (checklists, configs)
 jinja2>=3.1.0                   # Code template rendering
+beautifulsoup4>=4.12.0          # HTML parsing (ingest.py Sphinx doc extraction)
+tqdm>=4.66.0                    # Progress bars during ingestion
 
 # --- HTTP & Async ---
 httpx>=0.25.0                   # HTTP client (async support)
