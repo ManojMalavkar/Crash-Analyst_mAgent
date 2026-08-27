@@ -26,7 +26,6 @@ ENV/
 vector_db/
 *.chromadb/
 chroma_data/
-01_ANSA_ApiAgent/knowledge-base/html/
 
 # Serialized objects
 *.pkl
@@ -45,6 +44,7 @@ logs/
 *.jsonl
 !knowledge-base/*.jsonl
 !evaluation/*.jsonl
+evaluation/results/
 
 # OS files
 .DS_Store
@@ -73,7 +73,6 @@ slurm-*.out
 reports/*.html
 reports/*.pdf
 !reports/.gitkeep
-interview_preparation/
 
 # Docker
 .docker/
