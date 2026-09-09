@@ -7,16 +7,21 @@ openai>=1.12.0                  # OpenAI-compatible client (works with AI Gatewa
 tiktoken>=0.5.0                 # Token counting
 
 # --- Vector Database ---
-chromadb>=0.4.22                # Persistent vector storage
+qdrant-client>=1.9.0            # Qdrant vector search (replaces ChromaDB)
+# chromadb>=0.4.22              # Legacy: ChromaDB (kept for fallback)
 
 # --- Embeddings ---
-sentence-transformers>=2.2.0    # BAAI/bge-small-en-v1.5 embedding model
+sentence-transformers>=2.2.0    # Embedding models (all-MiniLM-L6-v2)
 
 # --- Knowledge Graph ---
-networkx>=3.1                   # API relationship graph
+neo4j>=5.19.0                   # Neo4j graph database driver (GraphRAG)
+networkx>=3.1                   # NetworkX fallback graph
 
 # --- Web UI ---
 gradio>=4.19.0                  # Interactive web interfaces
+
+# --- HTML Parsing (Ingestion Pipeline) ---
+beautifulsoup4>=4.12.0          # Sphinx HTML documentation parser
 
 # --- Data Processing ---
 pandas>=2.0.0                   # Data manipulation
