@@ -43,7 +43,7 @@ SafetyAgent/
 │   ├── logger.py               # Shared logging framework
 │   └── config.py               # Central configuration
 ├── 01_ANSA_ApiAgent/           # ✅ DONE — ANSA/META code generation
-├── 02_PyDyna_Agent/            # LS-DYNA manipulation via PyDyna
+├── 02_PyDyna_Agent/            # 🔧 IN PROGRESS — LS-DYNA manipulation via PyDyna
 │   ├── app_gradio.py
 │   ├── bin/
 │   │   ├── agent.py
@@ -192,30 +192,35 @@ commit: "Add Gradio web UI, admin tools, and log analytics agent"
 
 ---
 
-#### Day 8 — PyDyna Research + Knowledge Base Design
+#### Day 8 — PyDyna Research + Knowledge Base Design ✅
 ```
-commit: "Add PyDyna documentation and keyword reference knowledge base"
+commit: "Day 8: Add PyDyna knowledge base design and keyword ingestion parser"
 ```
-- [ ] Research PyDyna API: `ansys.dyna.core` module structure
-- [ ] `02_PyDyna_Agent/knowledge-base/pydyna_docs.jsonl` — API documentation
-  - Extract from PyDyna official docs
-  - Classes: `DynaBase`, `DynaSolution`, `DynaMech`, etc.
-  - Keywords: `*KEYWORD`, `*SECTION`, `*MAT`, `*CONTACT`, etc.
-- [ ] `02_PyDyna_Agent/knowledge-base/keyword_reference.jsonl`
-  - LS-DYNA keyword cards with parameters
-  - Cross-reference to PyDyna methods
+- [x] Research PyDyna API: `ansys.dyna.core` module structure
+- [x] `02_PyDyna_Agent/README.md` — Agent overview, classes, build pipeline
+- [x] `02_PyDyna_Agent/bin/ingest_keywords.py` — AST-based parser
+  - Parses FieldSchema tuples, class attrs, property docstrings, link_fields
+  - Tested: 3148 keywords, 57451 params, 72754 property docs, 0 errors
+- [x] `02_PyDyna_Agent/knowledge-base/pydyna_docs.jsonl` — 3148 API records
+- [x] `02_PyDyna_Agent/knowledge-base/keyword_reference.jsonl` — 3148 keyword cards
+  - 724 materials, 215 controls, 183 airbags, 154 contacts, 128 elements
 
 ---
 
-#### Day 9 — PyDyna Vector DB + Retriever
+#### Day 9 — PyDyna Vector DB + Retriever ✅
 ```
-commit: "Build PyDyna vector database and keyword retriever"
+commit: "Day 9: Add PyDyna vector DB builder and keyword retriever"
 ```
-- [ ] `02_PyDyna_Agent/bin/build_vector_db.py` — Index PyDyna docs
-- [ ] `02_PyDyna_Agent/bin/keyword_retriever.py`
-  - Keyword-based lookup (exact match for `*MAT_024`)
-  - Semantic search for "how to define contact between parts"
-  - Parameter validation against keyword spec
+- [x] `02_PyDyna_Agent/bin/build_vector_db.py` — ChromaDB vector store builder
+  - Collections: pydyna_keywords + pydyna_api (bge-small, 384d, cosine)
+  - Rich embed text: keyword + class + category + fields + descriptions
+  - Batch upsert, incremental updates, CLI with --stats
+- [x] `02_PyDyna_Agent/bin/keyword_retriever.py` — Hybrid retrieval
+  - Exact match: O(1) lookup by keyword name/class (KeywordIndex)
+  - Semantic search: ChromaDB vector query with category filter
+  - Parameter validation: type checking, unknown fields, required fields
+  - Helpers: get_material_model(), get_contact_type()
+  - CLI: --lookup, --search, --api, --validate, --material, --contact
 
 ---
 
