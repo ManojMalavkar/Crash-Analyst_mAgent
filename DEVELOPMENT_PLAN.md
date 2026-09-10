@@ -224,18 +224,22 @@ commit: "Day 9: Add PyDyna vector DB builder and keyword retriever"
 
 ---
 
-#### Day 10 — PyDyna Agent Core
+#### Day 10 — PyDyna Agent Core ✅
 ```
-commit: "Add PyDyna agent with tool-calling for LS-DYNA model manipulation"
+commit: "Day 10: Add PyDyna agent with tool-calling for LS-DYNA model manipulation"
 ```
-- [ ] `02_PyDyna_Agent/bin/agent.py` — PyDyna_Agent class
-- [ ] `02_PyDyna_Agent/bin/pydyna_tools.py` — Tools:
-  - `search_keyword(query)` — find LS-DYNA keywords
-  - `lookup_keyword(name)` — exact keyword lookup with params
+- [x] `02_PyDyna_Agent/bin/agent.py` (351 lines) — PyDynaAgent class
+  - Tool-calling loop (same architecture as CodeRAGAgent)
+  - System prompt with LS-DYNA domain context + tool selection guide
+  - Context management, non-fatal logging, CLI entry point
+- [x] `02_PyDyna_Agent/bin/pydyna_tools.py` (193 lines) — 6 RAG tools:
+  - `search_keyword(query)` — semantic search for LS-DYNA keywords
+  - `lookup_keyword(name)` — exact O(1) lookup with full card definition
   - `search_pydyna_api(query)` — search PyDyna Python API
-  - `get_material_model(name)` — material model parameters
-  - `get_contact_type(description)` — contact algorithm selection
-  - `validate_keyword(card_content)` — validate keyword syntax
+  - `get_material_model(description)` — material recommendation by description
+  - `get_contact_type(description)` — contact type recommendation
+  - `validate_keyword(keyword_name, params)` — parameter validation
+- [x] `02_PyDyna_Agent/bin/tools.py` (180 lines) — auto tool spec generator
 
 ---
 
