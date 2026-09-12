@@ -48,6 +48,7 @@ SafetyAgent/
 │   ├── bin/
 │   │   ├── agent.py
 │   │   ├── pydyna_tools.py
+│   │   ├── model_tools.py
 │   │   ├── keyword_retriever.py
 │   │   └── build_vector_db.py
 │   ├── knowledge-base/
@@ -243,17 +244,20 @@ commit: "Day 10: Add PyDyna agent with tool-calling for LS-DYNA model manipulati
 
 ---
 
-#### Day 11 — PyDyna Agent: Model Read/Write Tools
+#### Day 11 — PyDyna Agent: Model Read/Write Tools ✅
 ```
 commit: "Add LS-DYNA model file read/write and modification tools"
 ```
-- [ ] `02_PyDyna_Agent/bin/model_tools.py` — Tools:
-  - `read_keyword_file(filepath)` — parse .k/.key file
-  - `modify_material(mat_id, params)` — change material props
-  - `modify_contact(contact_id, params)` — change contact settings
-  - `add_keyword(keyword_type, params)` — insert new keyword
-  - `list_parts()` — list all parts in model
-  - `get_model_summary()` — overview of model content
+- [x] `02_PyDyna_Agent/bin/model_tools.py` (530+ lines) — 6 model manipulation tools:
+  - `read_keyword_file(filepath)` — parse .k/.key/.dyn files into structured KeywordBlocks
+  - `modify_material(mat_id, params)` — change material properties by MID
+  - `modify_contact(contact_id, params)` — change contact settings (card.field notation)
+  - `add_keyword(keyword_type, params)` — insert new keyword block before *END
+  - `list_parts()` — list all parts with PID, name, section, material
+  - `get_model_summary()` — overview: categories, materials, contacts, controls, output
+- [x] `KeywordFileParser` — fixed-width column parser for LS-DYNA format
+- [x] `ModelState` singleton — in-memory model with find/modify/write-back
+- [x] `ALL_TOOLS` registry for agent integration
 
 ---
 
