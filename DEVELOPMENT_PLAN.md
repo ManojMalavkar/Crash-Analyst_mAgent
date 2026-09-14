@@ -261,15 +261,18 @@ commit: "Add LS-DYNA model file read/write and modification tools"
 
 ---
 
-#### Day 12 — PyDyna Agent: Gradio UI
+#### Day 12 — PyDyna Agent: Gradio UI ✅
 ```
 commit: "Add PyDyna agent Gradio interface with model upload support"
 ```
-- [ ] `02_PyDyna_Agent/app_gradio.py` — Web UI
-  - Chat interface for PyDyna questions
-  - Model file upload (.k, .key, .dyn)
-  - Keyword card viewer/editor
-  - Generated code preview panel
+- [x] `02_PyDyna_Agent/app_gradio.py` (380+ lines) — Full-featured web UI:
+  - **Chat tab:** conversational interface with PyDyna agent, auto code extraction
+  - **Model Viewer tab:** file upload (.k/.key/.dyn), keyword blocks table, parts table
+  - **Keyword detail:** click-to-inspect raw content and parsed fields
+  - **Code Preview panel:** auto-populated from agent code blocks (Python/keyword cards)
+  - **Help tab:** reference guide with unit systems, question types, architecture
+  - Export modified model as .key download
+  - Example queries, Soft theme, custom CSS
 
 ---
 
